@@ -2,6 +2,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+import time
 
 class CreateTemplate():
     def __init__(self, driver, template):
@@ -54,10 +55,17 @@ class CreateTemplate():
                 checkbox = WebDriverWait(self.driver, 10).until(
                     EC.presence_of_element_located((By.ID, checkbox_id))
                 )
-                is_checked = checkbox.is_selected()
+                self.driver.execute_script("arguments[0].scrollIntoView(true);", checkbox)
+                time.sleep(0.2)
+                is_checked = checkbox.get_attribute("aria-checked") == "true"
+                print(f"[DEBUG] Before: Checkbox '{checkbox_id}' aria-checked={checkbox.get_attribute('aria-checked')}, expected={expected_value}")
                 if expected_value != is_checked:
                     self.driver.execute_script("arguments[0].click();", checkbox)
-                print(f"✅ Checkbox '{checkbox_id}' set correctly.")
+                    WebDriverWait(self.driver, 5).until(
+                        lambda d: d.find_element(By.ID, checkbox_id).get_attribute("aria-checked") == ("true" if expected_value else "false")
+                    )
+                    print(f"[DEBUG] After: Checkbox '{checkbox_id}' aria-checked={checkbox.get_attribute('aria-checked')}")
+                print(f"✅ Checkbox '{checkbox_id}' set to {expected_value}.")
 
 
             save_button = WebDriverWait(self.driver, 10).until(
