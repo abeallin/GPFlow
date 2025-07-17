@@ -604,11 +604,6 @@ class AccurxRunner:
                     )
 
                     if source == "create":
-                        create_workspace_button = WebDriverWait(driver, 10).until(
-                            EC.element_to_be_clickable((By.XPATH, "//a[contains(@href, '/settings/templates/create?isWorkspaceTemplate=true')]"))
-                        )
-                        create_workspace_button.click()
-
                         create_template = CreateTemplate(driver, self.template)
                         success = create_template._run()
                         

@@ -11,15 +11,35 @@ class CreateTemplate():
         """
         self.driver = driver
         self.template = template
+        self.template_name = template.get("template_name")
 
     def _run(self):
-
         try:
+            print(self.template_name)
+            if not isinstance(self.template_name, str) or not self.template_name.strip():
+                raise ValueError("❌ Template name is empty or invalid!")
+
+            try:
+                matching_items = WebDriverWait(self.driver, 1).until(
+                    EC.presence_of_all_elements_located(
+                        (By.XPATH, f'//tr[th[@scope="row" and normalize-space()="{self.template_name}"]]'))
+                )
+                # ✅ If we reach here, it means matching template(s) exist
+                print(f"❌ Matching template found for '{self.template_name}'. Exiting method.")
+                return
+            except TimeoutException:
+                # ✅ No match found, continue to creation
+                print(f"✅ No matching template found for '{self.template_name}', proceeding to create.")
+
+            create_workspace_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//a[contains(@href, '/settings/templates/create?isWorkspaceTemplate=true')]"))
+            )
+            create_workspace_button.click()
+
             # Wait for template name input and ensure it's interactable
             template_name_element = WebDriverWait(self.driver, 15).until(
                 EC.presence_of_element_located((By.XPATH, "//input[@id='templateName']"))
             )
-
 
             # Scroll into view to ensure visibility
             self.driver.execute_script("arguments[0].scrollIntoView();", template_name_element)
