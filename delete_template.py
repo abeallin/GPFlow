@@ -19,7 +19,7 @@ class DeleteTemplate:
             
             try:
                 # Locate all matching templates (instead of just one)
-                matching_items = WebDriverWait(self.driver, 10).until(
+                matching_items = WebDriverWait(self.driver, 1).until(
                     EC.presence_of_all_elements_located(
                         (By.XPATH, f'//tr[th[@scope="row" and normalize-space()="{self.template_name}"]]'))
                 )
