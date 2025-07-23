@@ -12,7 +12,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException, WebDriverException, InvalidSessionIdException
-from screen_saver import Screensaver
+from utils.screen_saver import Screensaver
 from create_template import CreateTemplate
 from delete_template import DeleteTemplate
 
