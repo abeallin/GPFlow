@@ -29,13 +29,13 @@ def main():
     root = tk.Tk()
     root.withdraw()  # Hide main window until ready
     root.deiconify()  # Show main window immediately
-    app = AccurxRunner(root)
+    app = GPFlow(root)
     root.mainloop()
 
-class AccurxRunner:
+class GPFlow:
     def __init__(self, root):
         self.root = root
-        self.root.title("Accurx Runner Application")
+        self.root.title("GP Flow Application")
         self.root.geometry("600x500")
         self.root.configure(bg="#F3F4F6")
         roboto_font = tkFont.Font(family="Roboto", size=12)

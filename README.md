@@ -1,4 +1,4 @@
-# Accurx Runner
+# GP Flow
 
 **Version:** 1.0.0  
 **Author:** Abel Ghebrezadik  
@@ -6,7 +6,7 @@
 **Date:** 2024-01-03
 
 ## Overview
-Accurx Runner is a Python application for automating template creation and deletion in the Accurx web platform. It features a Tkinter GUI and uses Selenium for browser automation. The project is designed to streamline workflows for users who need to manage templates in bulk.
+GP Flow is a Python application for automating template creation and deletion in the Accurx web platform. It features a Tkinter GUI and uses Selenium for browser automation. The project is designed to streamline workflows for users who need to manage templates in bulk.
 
 ## Features
 - Login screen with credential management

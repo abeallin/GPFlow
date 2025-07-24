@@ -24,8 +24,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import TimeoutException, WebDriverException, InvalidSessionIdException
 
-from accurx_gui import AccurxRunner
-from accurx_gui import main
+from gpflow_gui import GPFlow
+from gpflow_gui import main
 
 if __name__ == "__main__":
     main()
