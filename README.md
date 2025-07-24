@@ -1,6 +1,6 @@
 # GP Flow
 
-**Version:** 1.0.0  
+**Version:** 6.0.0  
 **Author:** Abel Ghebrezadik  
 **Email:** abel_g@hotmail.co.uk  
 **Date:** 2024-01-03
@@ -19,7 +19,7 @@ GP Flow is a Python application for automating template creation and deletion in
 1. **Clone the repository:**
    ```bash
    git clone <repo-url>
-   cd Accurx
+   cd GPFlow
    ```
 2. **Install dependencies:**
    - Python 3.7+
@@ -38,12 +38,12 @@ GP Flow is a Python application for automating template creation and deletion in
 ## Usage
 - Run the main application:
   ```bash
-  python Accurx_Runner.py
+  python GPFlow.py
   ```
 - Follow the on-screen instructions to log in, preview data, and create or delete templates.
 
 ## File Structure
-- `Accurx_Runner.py` - Main application entry point
+- `GPFlow.py` - Main application entry point
 - `create_template.py` - Logic for creating templates
 - `delete_template.py` - Logic for deleting templates
 - `data_parser.py` - Data parsing utilities
