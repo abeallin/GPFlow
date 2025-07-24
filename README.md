@@ -3,7 +3,7 @@
 **Version:** 6.0.0  
 **Author:** Abel Ghebrezadik  
 **Email:** abel_g@hotmail.co.uk  
-**Date:** 2024-01-03
+**Date:** 2025-07-04
 
 ## Overview
 GP Flow is a Python application for automating template creation and deletion in the Accurx web platform. It features a Tkinter GUI and uses Selenium for browser automation. The project is designed to streamline workflows for users who need to manage templates in bulk.
@@ -44,15 +44,24 @@ GP Flow is a Python application for automating template creation and deletion in
 
 ## File Structure
 - `GPFlow.py` - Main application entry point
+- `gpflow_gui.py` - GUI logic for the application
 - `create_template.py` - Logic for creating templates
 - `delete_template.py` - Logic for deleting templates
-- `data_parser.py` - Data parsing utilities
-- `helpers.py` - Helper functions
-- `login.py` - Login and environment parsing
-- `screen_saver.py` - Screensaver functionality
 - `Data.csv` - Data source for templates
 - `archive/` - Archived scripts
 - `release/` - Compiled releases and executables
+- `screens/` - GUI screens
+  - `login_screen.py` - Login screen UI
+  - `data_preview_screen.py` - Data preview and filtering UI
+  - `template_screen.py` - Template management UI
+  - `welcome_screen.py` - Welcome screen UI
+- `utils/` - Utility modules
+  - `data_parser.py` - Data parsing utilities
+  - `helpers.py` - Helper functions
+  - `login.py` - Login and environment parsing
+  - `screen_saver.py` - Screensaver functionality
+  - `selenium_runner.py` - Selenium automation utilities
+  - `supabase_utils.py` - Supabase integration helpers
 
 ## Notes
 - ChromeDriver is managed automatically via `webdriver_manager`.
