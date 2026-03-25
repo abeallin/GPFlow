@@ -1,72 +1,28 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+# Archive
+archive/
 
-# C extensions
-*.so
+# Claude Code
+.claude/
 
-# Distribution / packaging
-.Python
-build/
+# Dependencies
+node_modules/
+
+# Distribution / build output
 dist/
-*.egg-info/
-*.egg
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# mypy
-.mypy_cache/
-.dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# VS Code
-.vscode/
+dist-electron/
+out/
+.next/
 
 # Environment variables
 .env
 .env.*
 
+# Misc
+*.log
+
 # OS files
 .DS_Store
 Thumbs.db
 
-# Selenium/WebDriver
-chromedriver.exe
-
-# Tkinter window settings
-*.tk
-
-# Archive and release folders
-archive/
-release/
-
-# Executables
-*.exe
-*.spec
-
-# Misc
-*.log 
+# VS Code
+.vscode/

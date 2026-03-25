@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build && next build",
-    "postinstall": "PLAYWRIGHT_BROWSERS_PATH=./playwright-browsers npx playwright install chromium",
+    "install:browsers": "npx playwright install chromium",
     "package:win": "pnpm build && electron-builder --win",
     "package:mac": "pnpm build && electron-builder --mac",
     "test": "vitest run",
@@ -17,8 +17,9 @@
   "license": "ISC",
   "packageManager": "pnpm@10.33.0",
   "dependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "autoprefixer": "^10.4.27",
-    "better-sqlite3": "^12.8.0",
+    "better-sqlite3": "11.9.1",
     "electron": "^41.0.4",
     "electron-vite": "^5.0.0",
     "mongodb": "^7.1.1",
@@ -27,10 +28,10 @@
     "postcss": "^8.5.8",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "sql.js": "^1.14.1",
     "tailwindcss": "^4.2.2"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
