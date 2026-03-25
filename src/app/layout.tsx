@@ -49,7 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   transition={{ duration: 0.15 }}
                   className="pl-2"
                 >
-                  <LogoFull size="md" showSubtitle subtitleText="Desktop" />
+                  <LogoFull size="md" showSubtitle subtitleText={typeof window !== 'undefined' && window.electronAPI ? 'Desktop' : 'Web'} />
                 </motion.div>
               )}
             </AnimatePresence>
