@@ -1,0 +1,32 @@
+appId: com.gpflow.desktop
+productName: GP Flow
+directories:
+  output: release
+
+win:
+  target: nsis
+  icon: assets/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+mac:
+  target: dmg
+  icon: assets/icon.icns
+  category: public.app-category.healthcare-fitness
+
+files:
+  - dist-electron/**/*
+  - .next/out/**/*
+  - node_modules/**/*
+  - "!node_modules/.cache"
+
+extraResources:
+  - from: playwright-browsers/
+    to: browsers/
+    filter:
+      - "**/*"
+
+asar: true

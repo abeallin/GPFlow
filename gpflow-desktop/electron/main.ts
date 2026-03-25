@@ -6,6 +6,7 @@ import { registerDatabaseHandlers } from './ipc/database';
 import { registerAutomationHandlers } from './ipc/automation';
 import { createSchema } from '../database/schema';
 import { cleanupOldScreenshots } from '../automation/screenshots';
+import { initLogger, cleanupOldLogs } from './logger';
 
 let mainWindow: BrowserWindow | null = null;
 let db: Database.Database | null = null;
@@ -39,6 +40,8 @@ app.whenReady().then(() => {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   createSchema(db);
+  initLogger(app.getPath('userData'));
+  cleanupOldLogs();
 
   createWindow();
 
