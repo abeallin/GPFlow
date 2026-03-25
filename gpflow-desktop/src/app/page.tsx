@@ -1,7 +1,12 @@
+'use client';
+
+import { LoginForm } from '@/components/LoginForm';
+import { useRouter } from 'next/navigation';
+
 export default function LoginPage() {
+  const router = useRouter();
+
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <h1 className="text-2xl font-bold">GP Flow</h1>
-    </div>
+    <LoginForm onSuccess={() => router.push('/data')} />
   );
 }
