@@ -100,7 +100,7 @@ Login → Data Preview → Template Config → Run Dashboard
 - License key validation with status indicator
 - Credentials stored via Electron `safeStorage` API (OS keychain — Windows Credential Manager / macOS Keychain)
 - Offline-capable: caches last valid license state
-- License validation calls the existing MongoDB backend; if network is unavailable, trusts cached license state for up to 7 days
+- License validation calls MongoDB hosted on Railway (remote, not local). If network is unavailable, trusts cached license state stored in SQLite for up to 7 days. Cache stores: license key hash, validation result, and timestamp
 
 ### Two-Factor Authentication
 - After Accurx login, the app may redirect to a 2FA page
