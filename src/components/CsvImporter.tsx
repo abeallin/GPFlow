@@ -1,50 +1,121 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Upload } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
-import { Alert } from './ui/Alert';
 import { ipc } from '@/lib/ipc-client';
 
 interface CsvImporterProps {
   onImported: () => void;
+  onParsedWeb?: (practices: any[]) => void;
 }
 
-export function CsvImporter({ onImported }: CsvImporterProps) {
+function parseCsvText(text: string, fileName: string): { practices: any[]; errors: string[] } {
+  const errors: string[] = [];
+  const lines = text.trim().split('\n');
+
+  if (lines.length < 2) {
+    return { practices: [], errors: ['CSV file is empty or has no data rows'] };
+  }
+
+  const header = lines[0].replace(/^\uFEFF/, '').split(',').map((h) => h.trim());
+
+  if (!header.includes('accurx_id')) {
+    return { practices: [], errors: ['CSV must contain an "accurx_id" column'] };
+  }
+
+  const practices: any[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const values = lines[i].split(',').map((v) => v.trim());
+    const row: Record<string, string> = {};
+
+    for (let j = 0; j < header.length; j++) {
+      row[header[j]] = values[j] || '';
+    }
+
+    if (!row.accurx_id) {
+      errors.push(`Row ${i + 1}: missing accurx_id, skipped`);
+      continue;
+    }
+
+    practices.push({
+      id: i,
+      name: row.name || '',
+      accurx_id: row.accurx_id,
+      source_file: fileName,
+      ...row,
+    });
+  }
+
+  return { practices, errors };
+}
+
+export function CsvImporter({ onImported, onParsedWeb }: CsvImporterProps) {
   const [result, setResult] = useState<{ rowCount: number; errors: string[] } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [noIpcError, setNoIpcError] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImport = async () => {
-    if (!ipc) {
-      setNoIpcError(true);
-      return;
-    }
+  const handleElectronImport = async () => {
+    if (!ipc) return;
     setLoading(true);
-    setNoIpcError(false);
     const res = await ipc.importCsv();
     setResult(res);
     setLoading(false);
     if (res.rowCount > 0) onImported();
   };
 
+  const handleWebImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const { practices, errors } = parseCsvText(text, file.name);
+      setResult({ rowCount: practices.length, errors });
+      setLoading(false);
+      if (practices.length > 0) {
+        onParsedWeb?.(practices);
+      }
+    };
+    reader.readAsText(file);
+
+    // Reset so the same file can be re-selected
+    e.target.value = '';
+  };
+
+  const handleClick = () => {
+    if (ipc) {
+      handleElectronImport();
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
+
   return (
     <div className="space-y-3">
+      {/* Hidden file input for web mode */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv"
+        onChange={handleWebImport}
+        className="hidden"
+      />
+
       <Button
         variant="secondary"
-        onClick={handleImport}
+        onClick={handleClick}
         loading={loading}
         icon={<Upload className="w-4 h-4" />}
-        className="glass-card border border-border-subtle hover:border-accent/30 transition-colors"
       >
         Import CSV
       </Button>
-      {noIpcError && (
-        <Alert variant="warning" onDismiss={() => setNoIpcError(false)}>
-          CSV import requires the desktop app. Please run GP Flow via Electron.
-        </Alert>
-      )}
+
       {result && (
         <div className="flex items-center gap-2">
           <Badge variant={result.rowCount > 0 ? 'success' : 'error'} dot>

@@ -39,6 +39,10 @@ export default function DataPage() {
     setLoading(false);
   };
 
+  const handleWebParsed = (parsed: any[]) => {
+    setPractices(parsed);
+  };
+
   useEffect(() => { loadPractices(); }, []);
 
   return (
@@ -57,7 +61,7 @@ export default function DataPage() {
           <p className="label mt-2">Manage your practice data</p>
         </div>
         <div className="flex gap-3">
-          <CsvImporter onImported={loadPractices} />
+          <CsvImporter onImported={loadPractices} onParsedWeb={handleWebParsed} />
           <button
             onClick={() => {
               sessionStorage.setItem('selectedPracticeIds', JSON.stringify(selectedIds));
@@ -108,7 +112,7 @@ export default function DataPage() {
               icon={<Database />}
               title="No practices loaded"
               description="Import a CSV file to get started with template management."
-              action={<CsvImporter onImported={loadPractices} />}
+              action={<CsvImporter onImported={loadPractices} onParsedWeb={handleWebParsed} />}
             />
           ) : (
             <DataTable practices={practices} onSelectionChange={setSelectedIds} />
