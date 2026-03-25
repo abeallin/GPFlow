@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Tabs } from '@/components/ui/Tabs';
+import { Select } from '@/components/ui/Select';
 import { TemplateForm } from '@/components/TemplateForm';
 import { ipc } from '@/lib/ipc-client';
 import { useRouter } from 'next/navigation';
@@ -39,8 +40,8 @@ export default function TemplatesPage() {
   return (
     <div className="p-8 max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Template Management</h1>
-        <p className="text-gray-500">{selectedIds.length} practices selected</p>
+        <h1 className="text-2xl font-bold text-text-primary">Template Management</h1>
+        <p className="text-sm text-text-muted mt-1">{selectedIds.length} practices selected</p>
       </div>
 
       <Card className="p-6">
@@ -58,19 +59,16 @@ export default function TemplatesPage() {
         ]} />
       </Card>
 
-      <Card className="p-4">
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-gray-700">Screenshot Mode</p>
-          <select
-            value={screenshotMode}
-            onChange={(e) => setScreenshotMode(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-          >
-            <option value="off">Off</option>
-            <option value="on-failure">On failure only</option>
-            <option value="every-step">Every step</option>
-          </select>
-        </div>
+      <Card className="p-5">
+        <Select
+          label="Screenshot Mode"
+          value={screenshotMode}
+          onChange={(e) => setScreenshotMode(e.target.value)}
+        >
+          <option value="off">Off</option>
+          <option value="on-failure">On failure only</option>
+          <option value="every-step">Every step</option>
+        </Select>
       </Card>
     </div>
   );

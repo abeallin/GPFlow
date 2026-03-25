@@ -2,7 +2,10 @@
 
 import { useState } from 'react';
 import { Input } from './ui/Input';
+import { Textarea } from './ui/Textarea';
 import { Button } from './ui/Button';
+import { Toggle } from './ui/Toggle';
+import { Alert } from './ui/Alert';
 
 interface TemplateConfig {
   template_name: string;
@@ -27,19 +30,13 @@ export function TemplateForm({ mode, onSubmit, practiceCount }: TemplateFormProp
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({
-      template_name: templateName,
-      message,
-      individual,
-      batch,
-      allow_respond: allowRespond,
-    });
+    onSubmit({ template_name: templateName, message, individual, batch, allow_respond: allowRespond });
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6 pt-2">
       <Input
-        label="Template Name *"
+        label="Template Name"
         value={templateName}
         onChange={(e) => setTemplateName(e.target.value)}
         placeholder="Enter template name"
@@ -48,39 +45,29 @@ export function TemplateForm({ mode, onSubmit, practiceCount }: TemplateFormProp
 
       {mode === 'create' && (
         <>
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Message Body *</label>
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              rows={4}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              placeholder="Enter the template message"
-              required
-            />
-          </div>
+          <Textarea
+            label="Message Body"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Enter the template message"
+            rows={4}
+            required
+          />
 
-          <div className="space-y-3">
-            <p className="text-sm font-medium text-gray-700">Template Options</p>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={individual} onChange={(e) => setIndividual(e.target.checked)} className="rounded" />
-              <span className="text-sm">Individual messaging</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={batch} onChange={(e) => setBatch(e.target.checked)} className="rounded" />
-              <span className="text-sm">Batch messaging</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={allowRespond} onChange={(e) => setAllowRespond(e.target.checked)} className="rounded" />
-              <span className="text-sm">Allow patients to respond</span>
-            </label>
+          <div className="bg-slate-50 rounded-lg p-4 space-y-4">
+            <p className="text-sm font-semibold text-text-primary">Template Options</p>
+            <div className="space-y-3">
+              <Toggle checked={individual} onChange={setIndividual} label="Individual messaging" />
+              <Toggle checked={batch} onChange={setBatch} label="Batch messaging" />
+              <Toggle checked={allowRespond} onChange={setAllowRespond} label="Allow patients to respond" />
+            </div>
           </div>
         </>
       )}
 
-      <div className="p-4 bg-blue-50 rounded-lg text-sm text-blue-800">
+      <Alert variant="info">
         Will {mode} template &quot;{templateName || '...'}&quot; across <strong>{practiceCount}</strong> selected practices
-      </div>
+      </Alert>
 
       <Button type="submit" className="w-full">
         {mode === 'create' ? 'Bulk Create Template' : 'Bulk Delete Template'}
