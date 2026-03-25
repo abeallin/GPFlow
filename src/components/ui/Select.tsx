@@ -13,9 +13,10 @@ export function Select({ label, className = '', children, ...props }: SelectProp
       )}
       <div className="relative">
         <select
-          className={`w-full px-3 py-2.5 bg-white border border-border rounded-lg text-sm text-text-primary
-            shadow-[var(--shadow-sm)] transition-all duration-200 appearance-none pr-10
-            focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary
+          className={`w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-sm text-text-primary
+            transition-all duration-200 appearance-none pr-10
+            hover:border-border-strong
+            focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent focus:shadow-[var(--shadow-glow)]
             ${className}`}
           {...props}
         >

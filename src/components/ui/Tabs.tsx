@@ -19,7 +19,7 @@ export function Tabs({ tabs, defaultTab }: TabsProps) {
 
   return (
     <div>
-      <div className="flex bg-gray-100 rounded-lg p-1 gap-1">
+      <div className="flex bg-bg-root rounded-lg p-1 gap-1 border border-border-subtle">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -31,7 +31,7 @@ export function Tabs({ tabs, defaultTab }: TabsProps) {
             {activeTab === tab.id && (
               <motion.div
                 layoutId="activeTab"
-                className="absolute inset-0 bg-white rounded-md shadow-[var(--shadow-sm)]"
+                className="absolute inset-x-0 -bottom-1 h-0.5 bg-accent rounded-full shadow-[var(--shadow-glow)]"
                 transition={{ type: 'spring', duration: 0.3, bounce: 0.15 }}
               />
             )}

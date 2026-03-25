@@ -23,9 +23,9 @@ interface ProgressFeedProps {
 }
 
 const statusConfig = {
-  success: { icon: CheckCircle, color: 'text-success', bg: 'bg-success-light', border: 'border-l-success' },
-  failed: { icon: XCircle, color: 'text-error', bg: 'bg-error-light', border: 'border-l-error' },
-  skipped: { icon: SkipForward, color: 'text-warning', bg: 'bg-warning-light', border: 'border-l-warning' },
+  success: { icon: CheckCircle, color: 'text-success', bg: 'bg-success/10', border: 'border-l-success' },
+  failed: { icon: XCircle, color: 'text-error', bg: 'bg-error/10', border: 'border-l-error' },
+  skipped: { icon: SkipForward, color: 'text-warning', bg: 'bg-warning/10', border: 'border-l-warning' },
 };
 
 export function ProgressFeed({ events, total }: ProgressFeedProps) {
@@ -50,7 +50,7 @@ export function ProgressFeed({ events, total }: ProgressFeedProps) {
   return (
     <div className="space-y-4">
       <ProgressBar current={events.length} total={total} animate={events.length < total} />
-      <div ref={scrollRef} className="max-h-96 overflow-y-auto space-y-2">
+      <div ref={scrollRef} className="max-h-96 overflow-y-auto space-y-2 pr-1">
         <AnimatePresence initial={false}>
           {events.map((event, i) => {
             const { icon: Icon, color, bg, border } = statusConfig[event.status];
@@ -59,8 +59,8 @@ export function ProgressFeed({ events, total }: ProgressFeedProps) {
                 key={i}
                 initial={{ opacity: 0, x: -16 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.2 }}
-                className={`flex items-center justify-between p-3 rounded-lg border-l-4 ${border} ${bg} text-sm`}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+                className={`flex items-center justify-between p-3 rounded-lg border-l-4 ${border} ${bg} backdrop-blur-sm text-sm`}
               >
                 <div className="flex items-center gap-3">
                   <Icon className={`w-4 h-4 ${color}`} />

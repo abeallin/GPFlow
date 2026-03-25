@@ -30,8 +30,14 @@ export function CsvImporter({ onImported }: CsvImporterProps) {
   };
 
   return (
-    <div className="space-y-2">
-      <Button variant="secondary" onClick={handleImport} loading={loading} icon={<Upload className="w-4 h-4" />}>
+    <div className="space-y-3">
+      <Button
+        variant="secondary"
+        onClick={handleImport}
+        loading={loading}
+        icon={<Upload className="w-4 h-4" />}
+        className="glass-card border border-border-subtle hover:border-accent/30 transition-colors"
+      >
         Import CSV
       </Button>
       {noIpcError && (

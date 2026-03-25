@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { Card } from '@/components/ui/Card';
 import { Tabs } from '@/components/ui/Tabs';
 import { Select } from '@/components/ui/Select';
@@ -39,37 +40,67 @@ export default function TemplatesPage() {
 
   return (
     <div className="p-8 max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">Template Management</h1>
-        <p className="text-sm text-text-muted mt-1">{selectedIds.length} practices selected</p>
-      </div>
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+      >
+        <h1 className="text-2xl text-text-primary font-[var(--font-display)] tracking-[-0.03em]">
+          Template Management
+        </h1>
+        <div className="flex items-center gap-2 mt-1.5">
+          <span className="text-sm text-text-muted">
+            {selectedIds.length} practices selected
+          </span>
+          {selectedIds.length > 0 && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-accent/10 text-accent border border-accent/20">
+              {selectedIds.length}
+            </span>
+          )}
+        </div>
+      </motion.div>
 
-      <Card className="p-6">
-        <Tabs tabs={[
-          {
-            id: 'create',
-            label: 'Create Template',
-            content: <TemplateForm mode="create" onSubmit={(c) => startRun(c, 'create')} practiceCount={selectedIds.length} />,
-          },
-          {
-            id: 'delete',
-            label: 'Delete Template',
-            content: <TemplateForm mode="delete" onSubmit={(c) => startRun(c, 'delete')} practiceCount={selectedIds.length} />,
-          },
-        ]} />
-      </Card>
+      {/* Tabs Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15, duration: 0.4 }}
+      >
+        <div className="glass-card rounded-2xl p-6">
+          <Tabs tabs={[
+            {
+              id: 'create',
+              label: 'Create Template',
+              content: <TemplateForm mode="create" onSubmit={(c) => startRun(c, 'create')} practiceCount={selectedIds.length} />,
+            },
+            {
+              id: 'delete',
+              label: 'Delete Template',
+              content: <TemplateForm mode="delete" onSubmit={(c) => startRun(c, 'delete')} practiceCount={selectedIds.length} />,
+            },
+          ]} />
+        </div>
+      </motion.div>
 
-      <Card className="p-5">
-        <Select
-          label="Screenshot Mode"
-          value={screenshotMode}
-          onChange={(e) => setScreenshotMode(e.target.value)}
-        >
-          <option value="off">Off</option>
-          <option value="on-failure">On failure only</option>
-          <option value="every-step">Every step</option>
-        </Select>
-      </Card>
+      {/* Screenshot Mode */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25, duration: 0.4 }}
+      >
+        <div className="glass-card rounded-2xl p-5">
+          <Select
+            label="Screenshot Mode"
+            value={screenshotMode}
+            onChange={(e) => setScreenshotMode(e.target.value)}
+          >
+            <option value="off">Off</option>
+            <option value="on-failure">On failure only</option>
+            <option value="every-step">Every step</option>
+          </Select>
+        </div>
+      </motion.div>
     </div>
   );
 }

@@ -42,9 +42,9 @@ export function useAutomationProgress() {
     });
 
     return () => {
-      ipc.removeAllListeners('automation:progress');
-      ipc.removeAllListeners('automation:complete');
-      ipc.removeAllListeners('automation:2fa-required');
+      ipc?.removeAllListeners('automation:progress');
+      ipc?.removeAllListeners('automation:complete');
+      ipc?.removeAllListeners('automation:2fa-required');
     };
   }, []);
 

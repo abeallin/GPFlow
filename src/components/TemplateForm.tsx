@@ -54,8 +54,8 @@ export function TemplateForm({ mode, onSubmit, practiceCount }: TemplateFormProp
             required
           />
 
-          <div className="bg-slate-50 rounded-lg p-4 space-y-4">
-            <p className="text-sm font-semibold text-text-primary">Template Options</p>
+          <div className="bg-bg-root rounded-xl p-4 space-y-4 border border-accent-subtle/30">
+            <p className="text-sm font-semibold text-text-secondary">Template Options</p>
             <div className="space-y-3">
               <Toggle checked={individual} onChange={setIndividual} label="Individual messaging" />
               <Toggle checked={batch} onChange={setBatch} label="Batch messaging" />
@@ -69,7 +69,10 @@ export function TemplateForm({ mode, onSubmit, practiceCount }: TemplateFormProp
         Will {mode} template &quot;{templateName || '...'}&quot; across <strong>{practiceCount}</strong> selected practices
       </Alert>
 
-      <Button type="submit" className="w-full">
+      <Button
+        type="submit"
+        className="w-full bg-accent hover:bg-accent-hover text-on-accent font-semibold glow-accent transition-all duration-200"
+      >
         {mode === 'create' ? 'Bulk Create Template' : 'Bulk Delete Template'}
       </Button>
     </form>

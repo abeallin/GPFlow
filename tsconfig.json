@@ -11,12 +11,48 @@
     "outDir": "dist",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@electron/*": ["electron/*"],
-      "@automation/*": ["automation/*"],
-      "@database/*": ["database/*"]
-    }
+      "@/*": [
+        "src/*"
+      ],
+      "@electron/*": [
+        "electron/*"
+      ],
+      "@automation/*": [
+        "automation/*"
+      ],
+      "@database/*": [
+        "database/*"
+      ]
+    },
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "noEmit": true,
+    "incremental": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowArbitraryExtensions": true,
+    "ignoreDeprecations": "6.0",
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
   },
-  "include": ["src/**/*", "electron/**/*", "automation/**/*", "database/**/*"],
-  "exclude": ["node_modules", "dist", ".next"]
+  "include": [
+    "src/**/*",
+    "electron/**/*",
+    "automation/**/*",
+    "database/**/*",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".next"
+  ]
 }

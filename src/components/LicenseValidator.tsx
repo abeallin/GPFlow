@@ -30,7 +30,7 @@ export function LicenseValidator({ onValidated, initialKey = '' }: LicenseValida
   }, []);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <div className="flex gap-2">
         <div className="flex-1">
           <Input
@@ -41,7 +41,12 @@ export function LicenseValidator({ onValidated, initialKey = '' }: LicenseValida
           />
         </div>
         <div className="flex items-end">
-          <Button variant="secondary" onClick={validate} disabled={status === 'checking'}>
+          <Button
+            variant="secondary"
+            onClick={validate}
+            disabled={status === 'checking'}
+            className="border border-border-subtle hover:border-accent/30 transition-colors"
+          >
             {status === 'checking' ? 'Checking...' : 'Validate'}
           </Button>
         </div>

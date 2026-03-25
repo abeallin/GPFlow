@@ -4,6 +4,6 @@ interface SkeletonProps {
 
 export function Skeleton({ className = '' }: SkeletonProps) {
   return (
-    <div className={`bg-gray-200 animate-pulse rounded-lg ${className}`} />
+    <div className={`bg-bg-overlay animate-pulse rounded-lg ${className}`} />
   );
 }

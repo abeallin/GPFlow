@@ -20,12 +20,12 @@ export function Input({ label, error, icon, className = '', ...props }: InputPro
           </div>
         )}
         <input
-          className={`w-full px-3 py-2.5 bg-white border rounded-lg text-sm text-text-primary
-            shadow-[var(--shadow-sm)] transition-all duration-200
+          className={`w-full px-3 py-2.5 bg-bg-input border rounded-lg text-sm text-text-primary
+            transition-all duration-200
             placeholder:text-text-muted
-            focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary
+            focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent focus:shadow-[var(--shadow-glow)]
             ${icon ? 'pl-10' : ''}
-            ${error ? 'border-error ring-2 ring-error/20' : 'border-border'}
+            ${error ? 'border-error ring-2 ring-error/20' : 'border-border hover:border-border-strong'}
             ${className}`}
           {...props}
         />

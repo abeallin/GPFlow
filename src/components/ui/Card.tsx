@@ -5,9 +5,10 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const variantStyles = {
-  default: 'bg-white border border-border shadow-[var(--shadow-sm)]',
-  glass: 'bg-[var(--glass-bg)] backdrop-blur-xl border border-[var(--glass-border)] shadow-[var(--shadow-glass)]',
-  elevated: 'bg-white border border-border shadow-[var(--shadow-md)] hover:shadow-[var(--shadow-lg)] transition-shadow duration-300',
+  default: 'bg-bg-raised border border-border shadow-[var(--shadow-sm)]',
+  glass: 'glass-card',
+  elevated:
+    'bg-bg-raised border border-border shadow-[var(--shadow-md)] hover:shadow-[var(--shadow-lg)] hover:-translate-y-0.5 transition-all duration-300',
 };
 
 export function Card({ variant = 'default', className = '', children, ...props }: CardProps) {

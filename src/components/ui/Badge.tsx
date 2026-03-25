@@ -5,15 +5,15 @@ interface BadgeProps {
 }
 
 const variants = {
-  default: 'bg-gray-50 text-gray-600 ring-1 ring-inset ring-gray-200',
-  success: 'bg-success-light text-green-700 ring-1 ring-inset ring-green-200',
-  warning: 'bg-warning-light text-amber-700 ring-1 ring-inset ring-amber-200',
-  error: 'bg-error-light text-red-700 ring-1 ring-inset ring-red-200',
+  default: 'bg-bg-overlay text-text-secondary ring-1 ring-inset ring-border',
+  success: 'bg-success-light text-accent ring-1 ring-inset ring-accent/20',
+  warning: 'bg-warning-light text-warning ring-1 ring-inset ring-warning/20',
+  error: 'bg-error-light text-error ring-1 ring-inset ring-error/20',
 };
 
 const dotColors = {
-  default: 'bg-gray-400',
-  success: 'bg-success',
+  default: 'bg-text-muted',
+  success: 'bg-accent',
   warning: 'bg-warning',
   error: 'bg-error',
 };

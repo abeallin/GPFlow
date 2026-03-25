@@ -16,11 +16,11 @@ export function ProgressBar({ current, total, animate = false, className = '' }:
     <div className={`space-y-1.5 ${className}`}>
       <div className="flex justify-between text-xs font-medium">
         <span className="text-text-secondary">{current} / {total}</span>
-        <span className="text-text-primary tabular-nums">{percent}%</span>
+        <span className="text-text-primary tabular-nums font-mono">{percent}%</span>
       </div>
-      <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+      <div className="w-full bg-[#1A1A28] rounded-full h-2 overflow-hidden">
         <motion.div
-          className="relative h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400"
+          className="relative h-full rounded-full bg-gradient-to-r from-accent to-cyan-400 shadow-[0_0_12px_rgba(16,224,160,0.3)]"
           initial={{ width: 0 }}
           animate={{ width: `${percent}%` }}
           transition={{ duration: 0.5, ease: 'easeOut' }}
@@ -29,7 +29,7 @@ export function ProgressBar({ current, total, animate = false, className = '' }:
             <div
               className="absolute inset-0 w-full h-full"
               style={{
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
                 animation: 'shimmer 1.5s infinite',
               }}
             />

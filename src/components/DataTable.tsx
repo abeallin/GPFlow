@@ -76,34 +76,42 @@ export function DataTable({ practices, onSelectionChange }: DataTableProps) {
         placeholder="Search practices..."
         value={filter}
         onChange={(e) => { setFilter(e.target.value); setPage(0); }}
-        icon={<Search className="w-4 h-4" />}
+        icon={<Search className="w-4 h-4 text-text-muted" />}
       />
 
-      <div className="overflow-auto border border-border rounded-lg">
+      <div className="overflow-auto rounded-xl border border-border-subtle glass-card">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 sticky top-0 z-10">
+          <thead className="bg-bg-overlay sticky top-0 z-10">
             <tr>
               <th className="p-3 text-left w-12">
                 <input
                   type="checkbox"
                   onChange={toggleAll}
                   checked={selectedIds.size === sorted.length && sorted.length > 0}
-                  className="accent-primary rounded"
+                  className="rounded accent-accent"
                 />
               </th>
               <th
-                className="p-3 text-left cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                className={`p-3 text-left cursor-pointer transition-colors select-none ${
+                  sortField === 'name' ? 'bg-bg-overlay/80' : 'hover:bg-bg-overlay/50'
+                }`}
                 onClick={() => handleSort('name')}
               >
-                <span className="inline-flex items-center gap-1 text-text-secondary font-semibold text-xs uppercase tracking-wider">
+                <span className={`inline-flex items-center gap-1 font-semibold text-xs uppercase tracking-wider ${
+                  sortField === 'name' ? 'text-accent' : 'text-text-secondary'
+                }`}>
                   Name <SortIcon field="name" />
                 </span>
               </th>
               <th
-                className="p-3 text-left cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                className={`p-3 text-left cursor-pointer transition-colors select-none ${
+                  sortField === 'accurx_id' ? 'bg-bg-overlay/80' : 'hover:bg-bg-overlay/50'
+                }`}
                 onClick={() => handleSort('accurx_id')}
               >
-                <span className="inline-flex items-center gap-1 text-text-secondary font-semibold text-xs uppercase tracking-wider">
+                <span className={`inline-flex items-center gap-1 font-semibold text-xs uppercase tracking-wider ${
+                  sortField === 'accurx_id' ? 'text-accent' : 'text-text-secondary'
+                }`}>
                   Accurx ID <SortIcon field="accurx_id" />
                 </span>
               </th>
@@ -112,12 +120,14 @@ export function DataTable({ practices, onSelectionChange }: DataTableProps) {
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border-light">
+          <tbody className="divide-y divide-border-subtle">
             {paged.map((practice) => (
               <tr
                 key={practice.id}
                 className={`transition-colors duration-150 ${
-                  selectedIds.has(practice.id) ? 'bg-primary-50' : 'hover:bg-slate-50 even:bg-slate-50/50'
+                  selectedIds.has(practice.id)
+                    ? 'bg-accent-subtle/20'
+                    : 'hover:bg-bg-overlay/40'
                 }`}
               >
                 <td className="p-3">
@@ -125,7 +135,7 @@ export function DataTable({ practices, onSelectionChange }: DataTableProps) {
                     type="checkbox"
                     checked={selectedIds.has(practice.id)}
                     onChange={() => toggleOne(practice.id)}
-                    className="accent-primary rounded"
+                    className="rounded accent-accent"
                   />
                 </td>
                 <td className="p-3 text-text-primary font-medium">{practice.name}</td>
@@ -139,7 +149,7 @@ export function DataTable({ practices, onSelectionChange }: DataTableProps) {
 
       {/* Footer */}
       <div className="flex items-center justify-between text-sm">
-        <span className="text-text-muted">
+        <span className="text-text-secondary">
           {selectedIds.size} of {sorted.length} selected
         </span>
         {totalPages > 1 && (
@@ -147,7 +157,7 @@ export function DataTable({ practices, onSelectionChange }: DataTableProps) {
             <Button variant="ghost" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>
               <ChevronLeft className="w-4 h-4" />
             </Button>
-            <span className="text-text-secondary text-xs tabular-nums">
+            <span className="text-text-muted text-xs tabular-nums">
               Page {page + 1} of {totalPages}
             </span>
             <Button variant="ghost" size="sm" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}>

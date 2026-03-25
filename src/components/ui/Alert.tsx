@@ -11,10 +11,10 @@ interface AlertProps {
 }
 
 const config = {
-  info: { icon: Info, bg: 'bg-blue-50', border: 'border-l-blue-500', text: 'text-blue-800', iconColor: 'text-blue-500' },
-  warning: { icon: AlertTriangle, bg: 'bg-warning-light', border: 'border-l-warning', text: 'text-amber-800', iconColor: 'text-warning' },
-  error: { icon: XCircle, bg: 'bg-error-light', border: 'border-l-error', text: 'text-red-800', iconColor: 'text-error' },
-  success: { icon: CheckCircle, bg: 'bg-success-light', border: 'border-l-success', text: 'text-green-800', iconColor: 'text-success' },
+  info: { icon: Info, bg: 'bg-info-light', border: 'border-l-info', text: 'text-text-primary', iconColor: 'text-info' },
+  warning: { icon: AlertTriangle, bg: 'bg-warning-light', border: 'border-l-warning', text: 'text-text-primary', iconColor: 'text-warning' },
+  error: { icon: XCircle, bg: 'bg-error-light', border: 'border-l-error', text: 'text-text-primary', iconColor: 'text-error' },
+  success: { icon: CheckCircle, bg: 'bg-success-light', border: 'border-l-success', text: 'text-text-primary', iconColor: 'text-accent' },
 };
 
 export function Alert({ variant, title, children, onDismiss }: AlertProps) {
@@ -30,10 +30,10 @@ export function Alert({ variant, title, children, onDismiss }: AlertProps) {
       <Icon className={`w-5 h-5 ${iconColor} shrink-0 mt-0.5`} />
       <div className="flex-1 min-w-0">
         {title && <p className="font-semibold text-sm mb-0.5">{title}</p>}
-        <div className="text-sm">{children}</div>
+        <div className="text-sm text-text-secondary">{children}</div>
       </div>
       {onDismiss && (
-        <button onClick={onDismiss} className="shrink-0 text-current opacity-50 hover:opacity-100 transition-opacity">
+        <button onClick={onDismiss} className="shrink-0 text-text-muted hover:text-text-primary transition-colors">
           <X className="w-4 h-4" />
         </button>
       )}

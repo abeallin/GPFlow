@@ -1,86 +1,250 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 @theme {
-  /* Primary palette */
-  --color-primary: #2563EB;
-  --color-primary-hover: #1D4ED8;
-  --color-primary-light: #DBEAFE;
-  --color-primary-50: #EFF6FF;
-  --color-primary-900: #1E3A5F;
+  /* ── Accent ── */
+  --color-accent: #10E0A0;
+  --color-accent-hover: #0BC88E;
+  --color-accent-muted: #10E0A033;
+  --color-accent-subtle: #10E0A015;
+  --color-accent-glow: #10E0A040;
 
-  /* Status colors */
-  --color-success: #10B981;
-  --color-success-light: #D1FAE5;
-  --color-warning: #F59E0B;
-  --color-warning-light: #FEF3C7;
-  --color-error: #EF4444;
-  --color-error-light: #FEE2E2;
+  /* ── Status ── */
+  --color-success: #10E0A0;
+  --color-success-light: #10E0A018;
+  --color-warning: #FFB020;
+  --color-warning-light: #FFB02018;
+  --color-error: #F04444;
+  --color-error-light: #F0444418;
+  --color-info: #6C8EEF;
+  --color-info-light: #6C8EEF18;
 
-  /* Sidebar */
-  --color-sidebar: #1E293B;
-  --color-sidebar-hover: #334155;
+  /* ── Surfaces (blue-black, not pure black) ── */
+  --color-bg-root: #070910;
+  --color-bg-base: #0C0E16;
+  --color-bg-raised: #13151F;
+  --color-bg-overlay: #1A1C2A;
+  --color-bg-input: #0F1119;
 
-  /* Text hierarchy */
-  --color-text-primary: #0F172A;
-  --color-text-secondary: #475569;
-  --color-text-muted: #94A3B8;
-  --color-text-on-dark: #E2E8F0;
+  /* ── Sidebar ── */
+  --color-sidebar: #090B12;
+  --color-sidebar-hover: #161824;
 
-  /* Borders */
-  --color-border: #E2E8F0;
-  --color-border-light: #F1F5F9;
+  /* ── Text (opacity-based white hierarchy) ── */
+  --color-text-primary: rgba(255, 255, 255, 0.92);
+  --color-text-secondary: rgba(255, 255, 255, 0.55);
+  --color-text-muted: rgba(255, 255, 255, 0.32);
+  --color-text-accent: #10E0A0;
+  --color-text-on-accent: #070910;
+
+  /* ── Borders ── */
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-subtle: rgba(255, 255, 255, 0.04);
+  --color-border-strong: rgba(255, 255, 255, 0.14);
+  --color-border-accent: rgba(16, 224, 160, 0.2);
+
+  /* ── Font families ── */
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-body: 'Manrope', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
 :root {
-  /* Glass/surface (rgba values - outside @theme for Tailwind v4 compat) */
-  --glass-bg: rgba(255, 255, 255, 0.80);
-  --glass-border: rgba(255, 255, 255, 0.20);
-  --glass-bg-dark: rgba(255, 255, 255, 0.10);
-  --glass-border-dark: rgba(255, 255, 255, 0.15);
+  /* ── Glass ── */
+  --glass-bg: rgba(16, 18, 28, 0.60);
+  --glass-bg-strong: rgba(16, 18, 28, 0.85);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-border-hover: rgba(255, 255, 255, 0.10);
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
-  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.06);
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(16, 224, 160, 0.15);
+  --shadow-glow-strong: 0 0 40px rgba(16, 224, 160, 0.25);
 
-  /* Sidebar active */
-  --sidebar-active: rgba(59, 130, 246, 0.15);
+  /* ── Sidebar state ── */
+  --sidebar-active: rgba(16, 224, 160, 0.10);
+  --sidebar-active-border: #10E0A0;
 }
 
+/* ═══════════════════════════════════
+   BASE TYPOGRAPHY SYSTEM
+   ═══════════════════════════════════ */
+
 * {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-body);
+}
+
+html {
+  background: var(--color-bg-root);
+  color-scheme: dark;
+}
+
+body {
+  color: var(--color-text-primary);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Heading system: serif display, tight tracking, max semibold ── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 400; /* Instrument Serif is already visually heavy at regular */
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: 2rem;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
+h2 {
+  font-size: 1.5rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+h3 {
+  font-size: 1.25rem;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+code, pre, .font-mono {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+/* ── Labels: uppercase sans, wide tracking ── */
+.label {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
 }
 
 ::selection {
-  background-color: var(--color-primary-light);
-  color: var(--color-text-primary);
+  background-color: rgba(16, 224, 160, 0.25);
+  color: #FFFFFF;
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
-/* Shimmer animation for progress bars */
+/* ═══════════════════════════════════
+   NOISE TEXTURE
+   ═══════════════════════════════════ */
+
+.noise-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.03;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px;
+  z-index: 1;
+}
+
+/* ═══════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════ */
+
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
 
-/* Smooth scrollbar */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(16, 224, 160, 0.2); }
+  50% { box-shadow: 0 0 24px rgba(16, 224, 160, 0.4); }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+/* ═══════════════════════════════════
+   SCROLLBAR
+   ═══════════════════════════════════ */
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 99px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* ═══════════════════════════════════
+   UTILITY CLASSES
+   ═══════════════════════════════════ */
+
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border);
+}
+
+.glass-card-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid var(--glass-border);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #10E0A0, #6C8EEF, #10E0A0);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 6s ease infinite;
+}
+
+.glow-accent {
+  box-shadow: var(--shadow-glow);
+}
+
+.glow-accent-strong {
+  box-shadow: var(--shadow-glow-strong);
+}
+
+/* ── Electron window drag region ── */
+.drag-region {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
 }

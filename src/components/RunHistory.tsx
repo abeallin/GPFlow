@@ -45,7 +45,7 @@ export function RunHistory() {
   if (loading) {
     return (
       <div className="space-y-3">
-        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
+        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl bg-bg-raised" />)}
       </div>
     );
   }
@@ -63,7 +63,7 @@ export function RunHistory() {
   return (
     <div className="space-y-3">
       {runs.map((run) => (
-        <Card key={run.id} variant="elevated" className="p-4">
+        <Card key={run.id} variant="elevated" className="p-4 bg-bg-raised border border-border-subtle hover:border-border transition-colors duration-200">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
