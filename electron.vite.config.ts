@@ -3,12 +3,15 @@ import path from 'path';
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({
+      include: ['playwright-core', 'better-sqlite3', 'mongodb', 'electron'],
+    })],
     build: {
       outDir: 'dist-electron',
       emptyOutDir: false,
       rollupOptions: {
         input: path.resolve(__dirname, 'electron/main.ts'),
+        external: ['playwright-core', 'better-sqlite3', 'mongodb'],
         output: {
           entryFileNames: 'main.js',
         },
