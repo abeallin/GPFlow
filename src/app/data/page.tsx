@@ -236,18 +236,24 @@ export default function DataPage() {
   };
 
   const handleContinue = () => {
+    // Only continue with assigned practices
+    const assignedSelected = selectedIds.filter((id) => assignments[id]);
+
+    if (assignedSelected.length === 0) return;
+
     const dupes = getDuplicates();
     if (dupes.length > 0) {
       setShowDuplicates(true);
       return;
     }
-    sessionStorage.setItem('selectedPracticeIds', JSON.stringify(selectedIds));
+    sessionStorage.setItem('selectedPracticeIds', JSON.stringify(assignedSelected));
     sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assignments));
     router.push('/templates');
   };
 
   const forceContinue = () => {
-    sessionStorage.setItem('selectedPracticeIds', JSON.stringify(selectedIds));
+    const assignedSelected = selectedIds.filter((id) => assignments[id]);
+    sessionStorage.setItem('selectedPracticeIds', JSON.stringify(assignedSelected));
     sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assignments));
     router.push('/templates');
   };
@@ -257,6 +263,8 @@ export default function DataPage() {
     Object.values(assignments).filter((id) => id === accountId).length;
   const hasData = practices.length > 0;
   const duplicates = showDuplicates ? getDuplicates() : [];
+  const assignedSelectedCount = selectedIds.filter((id) => assignments[id]).length;
+  const unassignedSelectedCount = selectedIds.length - assignedSelectedCount;
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -281,12 +289,15 @@ export default function DataPage() {
           )}
           <button
             onClick={handleContinue}
-            disabled={selectedIds.length === 0}
+            disabled={assignedSelectedCount === 0}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-accent text-text-on-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
-            style={{ boxShadow: selectedIds.length > 0 ? '0 0 16px rgba(16, 224, 160, 0.2)' : 'none' }}
+            style={{ boxShadow: assignedSelectedCount > 0 ? '0 0 16px rgba(16, 224, 160, 0.2)' : 'none' }}
           >
             <CheckSquare className="w-4 h-4" />
-            Continue with {selectedIds.length} selected
+            Continue with {assignedSelectedCount} selected
+            {unassignedSelectedCount > 0 && (
+              <span className="text-[10px] opacity-70">({unassignedSelectedCount} unassigned skipped)</span>
+            )}
           </button>
         </div>
       </motion.div>
