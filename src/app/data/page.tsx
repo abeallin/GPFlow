@@ -52,8 +52,16 @@ export default function DataPage() {
   };
 
   const handleWebParsed = (parsed: any[]) => {
-    setPractices(parsed);
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+    setPractices((prev) => {
+      // Merge: new entries override existing by accurx_id, append new ones
+      const byAccurxId = new Map(prev.map((p) => [p.accurx_id, p]));
+      for (const p of parsed) {
+        byAccurxId.set(p.accurx_id, { ...p, id: byAccurxId.get(p.accurx_id)?.id ?? p.id });
+      }
+      const merged = [...byAccurxId.values()];
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      return merged;
+    });
     setLoading(false);
   };
 
