@@ -90,13 +90,47 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
     if (res.rowCount > 0) onImported();
   };
 
+  const processMultipleFiles = useCallback((files: File[]) => {
+    const csvFiles = files.filter((f) => f.name.toLowerCase().endsWith('.csv'));
+    if (csvFiles.length === 0) {
+      setResult({ rowCount: 0, errors: ['Please select .csv files'] });
+      return;
+    }
+
+    setLoading(true);
+    setResult(null);
+    let totalRows = 0;
+    const allErrors: string[] = [];
+    let processed = 0;
+
+    for (const file of csvFiles) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result as string;
+        const { practices, errors } = parseCsvText(text, file.name);
+        totalRows += practices.length;
+        allErrors.push(...errors);
+        if (practices.length > 0) {
+          onParsedWeb?.(practices);
+        }
+        processed++;
+        if (processed === csvFiles.length) {
+          setResult({ rowCount: totalRows, errors: allErrors });
+          setLoading(false);
+          if (totalRows > 0) onImported();
+        }
+      };
+      reader.readAsText(file);
+    }
+  }, [onImported, onParsedWeb]);
+
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
     if (ipc) {
       handleElectronImport();
     } else {
-      processFile(file);
+      processMultipleFiles([...files]);
     }
     e.target.value = '';
   };
@@ -106,16 +140,11 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
     e.stopPropagation();
     setDragging(false);
 
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
+    const files = [...e.dataTransfer.files];
+    if (files.length === 0) return;
 
-    if (!file.name.endsWith('.csv')) {
-      setResult({ rowCount: 0, errors: ['Please drop a .csv file'] });
-      return;
-    }
-
-    processFile(file);
-  }, [processFile]);
+    processMultipleFiles(files);
+  }, [processMultipleFiles]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -137,6 +166,7 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
         ref={fileInputRef}
         type="file"
         accept=".csv"
+        multiple
         onChange={handleFileInput}
         className="hidden"
       />
