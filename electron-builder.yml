@@ -7,7 +7,6 @@ win:
   target: nsis
   icon: assets/icon.ico
   forceCodeSigning: false
-  signAndEditExecutable: false
 
 nsis:
   oneClick: false
