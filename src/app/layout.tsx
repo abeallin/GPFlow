@@ -4,9 +4,11 @@ import './globals.css';
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Database, FileText, Play, Settings, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Database, FileText, Play, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/navigation';
 import { LogoFull } from '@/components/ui/Logo';
+import { ipc } from '@/lib/ipc-client';
 
 const navItems = [
   { href: '/data', label: 'Data', icon: Database },
@@ -16,7 +18,18 @@ const navItems = [
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await ipc?.logout();
+    } catch {
+      // Web mode — no IPC
+    }
+    sessionStorage.clear();
+    router.push('/');
+  };
 
   if (pathname === '/') {
     return (
@@ -107,12 +120,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             })}
           </div>
 
-          {/* Bottom */}
-          <div className="relative z-10 px-2 py-4 border-t border-border">
-            <div className={`flex items-center text-text-muted ${collapsed ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2'}`}>
-              <Settings className="w-4 h-4 shrink-0" />
-              {!collapsed && <span className="text-xs font-mono">v8.0.0</span>}
-            </div>
+          {/* Bottom — version + logout */}
+          <div className="relative z-10 px-2 py-3 border-t border-border space-y-1">
+            {!collapsed && (
+              <div className="px-3 py-1">
+                <span className="text-[10px] font-mono text-text-muted">v8.0.0</span>
+              </div>
+            )}
+            <button
+              onClick={handleLogout}
+              title={collapsed ? 'Log out' : undefined}
+              className={`flex items-center rounded-lg text-sm font-medium text-text-muted hover:text-error hover:bg-error/10 transition-all duration-200 w-full no-drag
+                ${collapsed ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5'}`}
+            >
+              <LogOut className="w-[18px] h-[18px] shrink-0" />
+              {!collapsed && <span>Log out</span>}
+            </button>
           </div>
         </motion.nav>
 

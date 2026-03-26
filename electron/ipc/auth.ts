@@ -1,7 +1,9 @@
-import { ipcMain, safeStorage } from 'electron';
+import { ipcMain, safeStorage, app } from 'electron';
 import { MongoClient } from 'mongodb';
 import { getCachedLicense, setCachedLicense } from '../../database/queries/license-cache';
 import type Database from 'better-sqlite3';
+import fs from 'fs';
+import path from 'path';
 
 async function validateLicenseRemote(licenseKey: string): Promise<boolean> {
   const mongoUri = process.env.MONGO_URI;
@@ -41,9 +43,6 @@ export function registerAuthHandlers(db: Database.Database): void {
     licenseKey: string;
   }) => {
     const encrypted = safeStorage.encryptString(JSON.stringify(creds));
-    const { app } = await import('electron');
-    const fs = await import('fs');
-    const path = await import('path');
     const credPath = path.join(app.getPath('userData'), 'credentials.enc');
     fs.writeFileSync(credPath, encrypted);
   });
@@ -56,5 +55,23 @@ export function registerAuthHandlers(db: Database.Database): void {
       return { success: false, error: 'Username and password are required' };
     }
     return { success: true };
+  });
+
+  ipcMain.handle('auth:logout', async () => {
+    // Delete encrypted credentials
+    const credPath = path.join(app.getPath('userData'), 'credentials.enc');
+    if (fs.existsSync(credPath)) {
+      fs.unlinkSync(credPath);
+    }
+
+    // Clear practices, runs, and cached data from SQLite
+    try {
+      db.exec('DELETE FROM run_steps');
+      db.exec('DELETE FROM runs');
+      db.exec('DELETE FROM practices');
+      db.exec('DELETE FROM license_cache');
+    } catch {
+      // Tables may not exist yet — that's fine
+    }
   });
 }

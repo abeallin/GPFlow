@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Database, CheckSquare, Upload } from 'lucide-react';
+import { Database, CheckSquare, Upload, FolderOpen } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { StatCard } from '@/components/ui/StatCard';
@@ -28,6 +28,7 @@ export default function DataPage() {
   const [practices, setPractices] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
+  const [importFolder, setImportFolder] = useState<string | null>(null);
   const router = useRouter();
 
   const loadPractices = async () => {
@@ -43,7 +44,23 @@ export default function DataPage() {
     setPractices(parsed);
   };
 
-  useEffect(() => { loadPractices(); }, []);
+  useEffect(() => {
+    loadPractices();
+
+    // Get import folder path (Electron only)
+    if (ipc) {
+      ipc.getImportFolder?.().then(setImportFolder).catch(() => {});
+
+      // Listen for auto-import events
+      ipc.onPracticesUpdated?.(() => {
+        loadPractices();
+      });
+
+      return () => {
+        ipc?.removeAllListeners('db:practices-updated');
+      };
+    }
+  }, []);
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -108,12 +125,20 @@ export default function DataPage() {
               {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
           ) : practices.length === 0 ? (
-            <EmptyState
-              icon={<Database />}
-              title="No practices loaded"
-              description="Import a CSV file to get started with template management."
-              action={<CsvImporter onImported={loadPractices} onParsedWeb={handleWebParsed} />}
-            />
+            <div>
+              <EmptyState
+                icon={<Database />}
+                title="No practices loaded"
+                description="Import a CSV file to get started with template management."
+                action={<CsvImporter onImported={loadPractices} onParsedWeb={handleWebParsed} />}
+              />
+              {importFolder && (
+                <div className="flex items-center gap-2 justify-center mt-2 text-text-muted text-xs">
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span>Or drop CSV files into <code className="font-mono text-text-secondary bg-bg-overlay px-1.5 py-0.5 rounded">{importFolder}</code></span>
+                </div>
+              )}
+            </div>
           ) : (
             <DataTable practices={practices} onSelectionChange={setSelectedIds} />
           )}

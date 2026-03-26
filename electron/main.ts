@@ -1,4 +1,4 @@
-import { app, BrowserWindow, protocol, net } from 'electron';
+import { app, BrowserWindow, protocol, ipcMain } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import Database from 'better-sqlite3';
@@ -6,11 +6,13 @@ import { registerAuthHandlers } from './ipc/auth';
 import { registerDatabaseHandlers } from './ipc/database';
 import { registerAutomationHandlers } from './ipc/automation';
 import { createSchema } from '../database/schema';
+import { importCsv } from '../database/csv-import';
 import { cleanupOldScreenshots } from '../automation/screenshots';
 import { initLogger, cleanupOldLogs } from './logger';
 
 let mainWindow: BrowserWindow | null = null;
 let db: Database.Database | null = null;
+let importWatcher: fs.FSWatcher | null = null;
 
 const SCHEME = 'gpflow';
 const OUT_DIR = path.join(__dirname, '../out');
@@ -42,6 +44,64 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
+
+function getImportDir(): string {
+  return path.join(app.getPath('userData'), 'imports');
+}
+
+function getProcessedDir(): string {
+  return path.join(getImportDir(), 'processed');
+}
+
+function ensureImportDirs() {
+  const importDir = getImportDir();
+  const processedDir = getProcessedDir();
+  if (!fs.existsSync(importDir)) fs.mkdirSync(importDir, { recursive: true });
+  if (!fs.existsSync(processedDir)) fs.mkdirSync(processedDir, { recursive: true });
+}
+
+function autoImportCsvFiles() {
+  if (!db) return;
+
+  const importDir = getImportDir();
+  const processedDir = getProcessedDir();
+
+  const csvFiles = fs.readdirSync(importDir).filter(
+    (f) => f.toLowerCase().endsWith('.csv') && fs.statSync(path.join(importDir, f)).isFile()
+  );
+
+  for (const file of csvFiles) {
+    const filePath = path.join(importDir, file);
+    try {
+      const result = importCsv(db, filePath);
+      // Move to processed folder
+      const destPath = path.join(processedDir, `${Date.now()}_${file}`);
+      fs.renameSync(filePath, destPath);
+
+      if (result.rowCount > 0 && mainWindow) {
+        mainWindow.webContents.send('db:practices-updated');
+      }
+    } catch {
+      // Leave file in place if import fails
+    }
+  }
+}
+
+function startImportWatcher() {
+  ensureImportDirs();
+
+  // Import any existing files on startup
+  autoImportCsvFiles();
+
+  // Watch for new files
+  const importDir = getImportDir();
+  importWatcher = fs.watch(importDir, (eventType, filename) => {
+    if (filename && filename.toLowerCase().endsWith('.csv')) {
+      // Small delay to ensure file write is complete
+      setTimeout(() => autoImportCsvFiles(), 500);
+    }
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -131,12 +191,19 @@ app.whenReady().then(() => {
   registerDatabaseHandlers(db);
   registerAutomationHandlers(mainWindow!, db);
 
+  // Import folder handler
+  ipcMain.handle('db:get-import-folder', () => getImportDir());
+
+  // Start watching import folder for CSVs
+  startImportWatcher();
+
   // Cleanup old screenshots on startup
   const screenshotPath = path.join(app.getPath('userData'), 'screenshots');
   cleanupOldScreenshots(screenshotPath);
 });
 
 app.on('window-all-closed', () => {
+  if (importWatcher) importWatcher.close();
   if (db) db.close();
   if (process.platform !== 'darwin') app.quit();
 });

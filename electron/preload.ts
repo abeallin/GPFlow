@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('auth:validate-license', { key }),
   saveCredentials: (creds: { username: string; password: string; licenseKey: string }) =>
     ipcRenderer.invoke('auth:save-credentials', creds),
+  logout: () =>
+    ipcRenderer.invoke('auth:logout'),
 
   // Database
   importCsv: (filePath: string) =>
@@ -20,6 +22,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('db:save-template', template),
   getRuns: (limit?: number, offset?: number) =>
     ipcRenderer.invoke('db:get-runs', { limit, offset }),
+  getImportFolder: () =>
+    ipcRenderer.invoke('db:get-import-folder'),
 
   // Automation
   startRun: (config: { templateConfig: unknown; practiceIds: number[]; screenshotMode: string }) =>
@@ -40,6 +44,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('automation:complete', (_event, data) => callback(data)),
   onChangeDetected: (callback: (event: unknown) => void) =>
     ipcRenderer.on('automation:change-detected', (_event, data) => callback(data)),
+  onPracticesUpdated: (callback: () => void) =>
+    ipcRenderer.on('db:practices-updated', () => callback()),
 
   // Cleanup
   removeAllListeners: (channel: string) =>
