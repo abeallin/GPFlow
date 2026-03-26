@@ -32,6 +32,7 @@ export default function DataPage() {
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [assignments, setAssignments] = useState<Record<number, string>>({});
+  const [activeAccount, setActiveAccount] = useState<string | null>(null);
   const router = useRouter();
 
   const loadPractices = async () => {
@@ -189,12 +190,44 @@ export default function DataPage() {
         </div>
       )}
 
-      {/* Table */}
+      {/* Account filter tabs + Table */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3, duration: 0.4 }}
       >
+        {/* Account filter tabs */}
+        {practices.length > 0 && accounts.length > 0 && (
+          <div className="flex gap-1 mb-4 bg-bg-root rounded-lg p-1 border border-border-subtle w-fit">
+            <button
+              onClick={() => setActiveAccount(null)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                activeAccount === null
+                  ? 'bg-bg-raised text-text-primary'
+                  : 'text-text-muted hover:text-text-secondary'
+              }`}
+            >
+              All ({practices.length})
+            </button>
+            {accounts.map((account) => {
+              const count = practiceCountByAccount(account.id);
+              return (
+                <button
+                  key={account.id}
+                  onClick={() => setActiveAccount(account.id)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    activeAccount === account.id
+                      ? 'bg-accent/15 text-accent'
+                      : 'text-text-muted hover:text-text-secondary'
+                  }`}
+                >
+                  {account.label} ({count})
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="glass-card rounded-2xl p-5">
           {loading ? (
             <div className="space-y-3">
@@ -209,7 +242,11 @@ export default function DataPage() {
             />
           ) : (
             <DataTable
-              practices={practices}
+              practices={
+                activeAccount
+                  ? practices.filter((p) => assignments[p.id] === activeAccount)
+                  : practices
+              }
               onSelectionChange={setSelectedIds}
               assignments={assignments}
               accounts={accounts}
