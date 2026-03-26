@@ -99,8 +99,10 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
 
     setLoading(true);
     setResult(null);
+
     let totalRows = 0;
     const allErrors: string[] = [];
+    const allPractices: any[] = [];
     let processed = 0;
 
     for (const file of csvFiles) {
@@ -110,14 +112,17 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
         const { practices, errors } = parseCsvText(text, file.name);
         totalRows += practices.length;
         allErrors.push(...errors);
-        if (practices.length > 0) {
-          onParsedWeb?.(practices);
-        }
+        allPractices.push(...practices);
         processed++;
+
+        // Only fire callback once all files are read
         if (processed === csvFiles.length) {
           setResult({ rowCount: totalRows, errors: allErrors });
           setLoading(false);
-          if (totalRows > 0) onImported();
+          if (allPractices.length > 0) {
+            onParsedWeb?.(allPractices);
+            onImported();
+          }
         }
       };
       reader.readAsText(file);
