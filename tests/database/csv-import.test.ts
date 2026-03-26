@@ -40,7 +40,7 @@ describe('CSV Import', () => {
 
     const result = importCsv(db, csvPath);
     expect(result.rowCount).toBe(0);
-    expect(result.errors).toContain('CSV must contain an "accurx_id" column');
+    expect(result.errors).toContain('CSV must contain an "accurx_id" or "Accurx_Id" column');
   });
 
   it('skips rows with empty accurx_id', () => {

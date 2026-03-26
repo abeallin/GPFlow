@@ -19,11 +19,17 @@ function parseCsvText(text: string, fileName: string): { practices: any[]; error
     return { practices: [], errors: ['CSV file is empty or has no data rows'] };
   }
 
-  const header = lines[0].replace(/^\uFEFF/, '').split(',').map((h) => h.trim());
+  const rawHeader = lines[0].replace(/^\uFEFF/, '').split(',').map((h) => h.trim());
+  // Normalize headers to lowercase with underscores for consistent access
+  const header = rawHeader.map((h) => h.toLowerCase().replace(/\s+/g, '_'));
 
-  if (!header.includes('accurx_id')) {
-    return { practices: [], errors: ['CSV must contain an "accurx_id" column'] };
+  const accurxIdx = header.indexOf('accurx_id');
+  if (accurxIdx === -1) {
+    return { practices: [], errors: ['CSV must contain an "accurx_id" or "Accurx_Id" column'] };
   }
+
+  // Find name column (could be "name", "Practice Name", "Name on Accurx", etc.)
+  const nameIdx = header.findIndex((h) => h === 'name' || h === 'practice_name' || h === 'name_on_accurx');
 
   const practices: any[] = [];
 
@@ -43,7 +49,7 @@ function parseCsvText(text: string, fileName: string): { practices: any[]; error
 
     practices.push({
       id: i,
-      name: row.name || '',
+      name: (nameIdx !== -1 ? values[nameIdx] : '') || '',
       accurx_id: row.accurx_id,
       source_file: fileName,
       ...row,

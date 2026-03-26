@@ -17,11 +17,16 @@ export function importCsv(db: Database.Database, filePath: string): CsvImportRes
     return { rowCount: 0, errors: ['CSV file is empty or has no data rows'] };
   }
 
-  const header = lines[0].replace(/^\uFEFF/, '').split(',').map((h) => h.trim());
+  const rawHeader = lines[0].replace(/^\uFEFF/, '').split(',').map((h) => h.trim());
+  // Normalize headers to lowercase with underscores for consistent access
+  const header = rawHeader.map((h) => h.toLowerCase().replace(/\s+/g, '_'));
 
   if (!header.includes('accurx_id')) {
-    return { rowCount: 0, errors: ['CSV must contain an "accurx_id" column'] };
+    return { rowCount: 0, errors: ['CSV must contain an "accurx_id" or "Accurx_Id" column'] };
   }
+
+  // Find name column (could be "name", "practice_name", "name_on_accurx", etc.)
+  const nameIdx = header.findIndex((h) => h === 'name' || h === 'practice_name' || h === 'name_on_accurx');
 
   const rows: Record<string, string>[] = [];
 
@@ -36,6 +41,11 @@ export function importCsv(db: Database.Database, filePath: string): CsvImportRes
     if (!row.accurx_id) {
       errors.push(`Row ${i + 1}: missing accurx_id, skipped`);
       continue;
+    }
+
+    // Use the best name column available
+    if (nameIdx !== -1 && !row.name) {
+      row.name = values[nameIdx] || '';
     }
 
     rows.push(row);
