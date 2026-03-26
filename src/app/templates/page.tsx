@@ -25,7 +25,9 @@ export default function TemplatesPage() {
   const [practices, setPractices] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [screenshotMode, setScreenshotMode] = useState<string>('on-failure');
+  const [webError, setWebError] = useState<string | null>(null);
   const router = useRouter();
+  const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
   useEffect(() => {
     const stored = sessionStorage.getItem('selectedPracticeIds');
@@ -91,7 +93,11 @@ export default function TemplatesPage() {
   }, [practices, selectedIds, assignments]);
 
   const startRun = async (config: TemplateConfig, type: 'create' | 'delete') => {
-    if (!ipc) return;
+    if (!ipc) {
+      setWebError('Automation requires the GP Flow desktop app. The web version is for data management only.');
+      return;
+    }
+    setWebError(null);
 
     const { groups } = groupedByAccount;
     const accountEntries = Object.values(groups);
@@ -172,6 +178,20 @@ export default function TemplatesPage() {
             </div>
           </div>
         </Alert>
+      )}
+
+      {/* Web mode warning */}
+      {webError && (
+        <Alert variant="warning" title="Desktop App Required" onDismiss={() => setWebError(null)}>
+          {webError}
+        </Alert>
+      )}
+
+      {!isElectron && (
+        <div className="glass-card rounded-xl px-4 py-3 text-xs text-text-muted flex items-center gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
+          Running in web mode — automation will only work in the GP Flow desktop app.
+        </div>
       )}
 
       {/* Tabs Card */}
