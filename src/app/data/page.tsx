@@ -94,13 +94,27 @@ export default function DataPage() {
 
   // Called by CsvImporter when files are parsed
   const handleWebParsed = (parsed: any[]) => {
-    // Merge new practices with existing (dedup by accurx_id)
+    // Merge: dedup by accurx_id WITHIN the same source_file only.
+    // Practices from different files get separate entries so they can
+    // be independently assigned to different accounts.
     setPractices((prev) => {
-      const byAccurxId = new Map(prev.map((p) => [p.accurx_id, p]));
+      // Keep all existing practices not from the new files
+      const newFileNames = new Set(parsed.map((p) => p.source_file));
+      const kept = prev.filter((p) => !newFileNames.has(p.source_file));
+
+      // Dedup new practices within each file
+      const byKey = new Map<string, any>();
       for (const p of parsed) {
-        byAccurxId.set(p.accurx_id, { ...p, id: byAccurxId.get(p.accurx_id)?.id ?? p.id });
+        const key = `${p.source_file}::${p.accurx_id}`;
+        if (!byKey.has(key)) byKey.set(key, p);
       }
-      const merged = [...byAccurxId.values()];
+
+      // Assign unique IDs to new practices
+      const maxId = kept.reduce((max, p) => Math.max(max, p.id || 0), 0);
+      let nextId = maxId + 1;
+      const newPractices = [...byKey.values()].map((p) => ({ ...p, id: nextId++ }));
+
+      const merged = [...kept, ...newPractices];
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
       return merged;
     });
