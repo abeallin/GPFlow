@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Database, CheckSquare, Upload, FolderOpen, Trash2, UserCheck } from 'lucide-react';
+import { Database, CheckSquare, Trash2, UserCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -30,9 +30,7 @@ export default function DataPage() {
   const [practices, setPractices] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
-  const [importFolder, setImportFolder] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  // Map of practice id → account id
   const [assignments, setAssignments] = useState<Record<number, string>>({});
   const router = useRouter();
 
@@ -44,26 +42,36 @@ export default function DataPage() {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } else {
       const stored = sessionStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setPractices(JSON.parse(stored));
-      }
+      if (stored) setPractices(JSON.parse(stored));
     }
     setLoading(false);
   };
 
-  const handleWebParsed = (parsed: any[]) => {
+  // Import practices and auto-assign them to an account
+  const handleParsedForAccount = useCallback((accountId: string) => (parsed: any[]) => {
     setPractices((prev) => {
-      // Merge: new entries override existing by accurx_id, append new ones
       const byAccurxId = new Map(prev.map((p) => [p.accurx_id, p]));
       for (const p of parsed) {
         byAccurxId.set(p.accurx_id, { ...p, id: byAccurxId.get(p.accurx_id)?.id ?? p.id });
       }
       const merged = [...byAccurxId.values()];
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+
+      // Auto-assign new practices to this account
+      setAssignments((prevAssign) => {
+        const updated = { ...prevAssign };
+        for (const p of parsed) {
+          const existing = byAccurxId.get(p.accurx_id);
+          if (existing) updated[existing.id] = accountId;
+        }
+        sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(updated));
+        return updated;
+      });
+
       return merged;
     });
     setLoading(false);
-  };
+  }, []);
 
   const handleClear = () => {
     setPractices([]);
@@ -74,21 +82,7 @@ export default function DataPage() {
     sessionStorage.removeItem('selectedPracticeIds');
   };
 
-  const assignToAccount = (accountId: string) => {
-    const updated = { ...assignments };
-    for (const id of selectedIds) {
-      updated[id] = accountId;
-    }
-    setAssignments(updated);
-    sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(updated));
-    setSelectedIds([]);
-  };
-
   const handleContinue = () => {
-    // Store practices with their account assignments
-    const selectedWithAccounts = practices
-      .filter((p) => selectedIds.includes(p.id))
-      .map((p) => ({ ...p, accountId: assignments[p.id] }));
     sessionStorage.setItem('selectedPracticeIds', JSON.stringify(selectedIds));
     sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assignments));
     router.push('/templates');
@@ -98,19 +92,18 @@ export default function DataPage() {
     loadPractices();
     setAccounts(getAccounts());
 
-    // Restore assignments
     const stored = sessionStorage.getItem(ASSIGNMENTS_KEY);
     if (stored) setAssignments(JSON.parse(stored));
 
     if (ipc) {
-      ipc.getImportFolder?.().then(setImportFolder).catch(() => {});
       ipc.onPracticesUpdated?.(() => loadPractices());
       return () => { ipc?.removeAllListeners('db:practices-updated'); };
     }
   }, []);
 
   const assignedCount = Object.keys(assignments).length;
-  const unassignedSelected = selectedIds.filter((id) => !assignments[id]).length;
+  const practiceCountByAccount = (accountId: string) =>
+    Object.values(assignments).filter((id) => id === accountId).length;
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -125,12 +118,12 @@ export default function DataPage() {
           <h1 className="text-2xl text-text-primary font-[var(--font-display)] tracking-[-0.03em]">
             Data Preview
           </h1>
-          <p className="label mt-2">Manage your practice data</p>
+          <p className="label mt-2">Upload one CSV per account</p>
         </div>
         <div className="flex gap-3">
           {practices.length > 0 && (
             <Button variant="ghost" onClick={handleClear} icon={<Trash2 className="w-4 h-4" />}>
-              Clear
+              Clear All
             </Button>
           )}
           <button
@@ -159,39 +152,40 @@ export default function DataPage() {
           <StatCard label="Assigned" value={`${assignedCount}/${practices.length}`} icon={<UserCheck />} />
         </motion.div>
         <motion.div variants={fadeUp}>
-          <StatCard label="Accounts" value={accounts.length} icon={<Upload />} />
+          <StatCard label="Accounts" value={accounts.length} icon={<Users />} />
         </motion.div>
       </motion.div>
 
-      {/* Account assignment toolbar — appears when practices are selected */}
-      {selectedIds.length > 0 && accounts.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-3 glass-card rounded-xl px-4 py-3"
-        >
-          <span className="text-sm text-text-secondary">
-            Assign {selectedIds.length} selected to:
-          </span>
-          {accounts.map((account) => (
-            <button
-              key={account.id}
-              onClick={() => assignToAccount(account.id)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
-            >
-              {account.label}
-            </button>
-          ))}
-        </motion.div>
-      )}
+      {/* One drop zone per account */}
+      <div className={`grid gap-4 ${accounts.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        {accounts.map((account) => {
+          const count = practiceCountByAccount(account.id);
+          return (
+            <div key={account.id} className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-accent/10 text-accent border border-accent/20">
+                    {account.label}
+                  </span>
+                  {count > 0 && (
+                    <span className="text-xs text-text-muted">{count} practices</span>
+                  )}
+                </div>
+                <span className="text-xs text-text-muted">{account.username}</span>
+              </div>
+              <CsvImporter
+                onImported={loadPractices}
+                onParsedWeb={handleParsedForAccount(account.id)}
+                compact={count > 0}
+              />
+            </div>
+          );
+        })}
+      </div>
 
-      {/* Drop Zone */}
-      <CsvImporter onImported={loadPractices} onParsedWeb={handleWebParsed} compact={practices.length > 0} />
-
-      {importFolder && (
-        <div className="flex items-center gap-2 text-text-muted text-xs">
-          <FolderOpen className="w-3.5 h-3.5" />
-          <span>Auto-import: drop CSV files into <code className="font-mono text-text-secondary bg-bg-overlay px-1.5 py-0.5 rounded">{importFolder}</code></span>
+      {accounts.length === 0 && (
+        <div className="glass-card rounded-xl p-6 text-center">
+          <p className="text-sm text-text-muted">No accounts added. Go back to the login page to add Accurx accounts first.</p>
         </div>
       )}
 
@@ -211,7 +205,7 @@ export default function DataPage() {
             <EmptyState
               icon={<Database />}
               title="No practices loaded"
-              description="Drag and drop a CSV file above, or click the drop zone to browse."
+              description="Upload a CSV file for each account above."
             />
           ) : (
             <DataTable
