@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Database, CheckSquare, Trash2, UserCheck, Users, FileSpreadsheet, X } from 'lucide-react';
+import { Database, CheckSquare, Trash2, UserCheck, Users, FileSpreadsheet, X, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -60,6 +60,7 @@ export default function DataPage() {
   const [assignments, setAssignments] = useState<Record<number, string>>({});
   const [activeAccount, setActiveAccount] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [showDuplicates, setShowDuplicates] = useState(false);
   const router = useRouter();
 
   // Load everything from sessionStorage on mount
@@ -197,7 +198,55 @@ export default function DataPage() {
     sessionStorage.removeItem('selectedPracticeIds');
   };
 
+  // Find accurx_ids that appear in multiple accounts among selected practices
+  const getDuplicates = () => {
+    const selected = practices.filter((p) => selectedIds.includes(p.id));
+    const accurxToEntries = new Map<string, { id: number; accountId: string; name: string }[]>();
+
+    for (const p of selected) {
+      const accountId = assignments[p.id];
+      if (!accountId) continue;
+      if (!accurxToEntries.has(p.accurx_id)) accurxToEntries.set(p.accurx_id, []);
+      accurxToEntries.get(p.accurx_id)!.push({ id: p.id, accountId, name: p.name || p.accurx_id });
+    }
+
+    return [...accurxToEntries.entries()]
+      .filter(([, entries]) => {
+        const uniqueAccounts = new Set(entries.map((e) => e.accountId));
+        return uniqueAccounts.size > 1;
+      })
+      .map(([accurxId, entries]) => ({ accurxId, entries }));
+  };
+
+  // Auto-resolve: keep each accurx_id only in the first account, remove from others
+  const autoResolveDuplicates = () => {
+    const dupes = getDuplicates();
+    const idsToRemove = new Set<number>();
+
+    for (const { entries } of dupes) {
+      // Keep the first entry, remove the rest from selection
+      for (let i = 1; i < entries.length; i++) {
+        idsToRemove.add(entries[i].id);
+      }
+    }
+
+    const newSelected = selectedIds.filter((id) => !idsToRemove.has(id));
+    setSelectedIds(newSelected);
+    setShowDuplicates(false);
+  };
+
   const handleContinue = () => {
+    const dupes = getDuplicates();
+    if (dupes.length > 0) {
+      setShowDuplicates(true);
+      return;
+    }
+    sessionStorage.setItem('selectedPracticeIds', JSON.stringify(selectedIds));
+    sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assignments));
+    router.push('/templates');
+  };
+
+  const forceContinue = () => {
     sessionStorage.setItem('selectedPracticeIds', JSON.stringify(selectedIds));
     sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assignments));
     router.push('/templates');
@@ -207,6 +256,7 @@ export default function DataPage() {
   const practiceCountByAccount = (accountId: string) =>
     Object.values(assignments).filter((id) => id === accountId).length;
   const hasData = practices.length > 0;
+  const duplicates = showDuplicates ? getDuplicates() : [];
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -317,6 +367,67 @@ export default function DataPage() {
         <div className="glass-card rounded-xl p-6 text-center">
           <p className="text-sm text-text-muted">No accounts added. Go back to the login page to add Accurx accounts first.</p>
         </div>
+      )}
+
+      {/* Duplicate resolution panel */}
+      {showDuplicates && duplicates.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card rounded-2xl p-5 border border-warning/30 space-y-4"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-text-primary">
+                {duplicates.length} practice{duplicates.length > 1 ? 's' : ''} assigned to multiple accounts
+              </p>
+              <p className="text-xs text-text-muted mt-1">
+                The same accurx_id appears in files assigned to different accounts. Resolve before continuing.
+              </p>
+            </div>
+          </div>
+
+          <div className="max-h-48 overflow-y-auto space-y-1.5">
+            {duplicates.map(({ accurxId, entries }) => (
+              <div key={accurxId} className="flex items-center gap-3 text-xs bg-bg-root rounded-lg px-3 py-2">
+                <span className="font-mono text-text-secondary w-16 shrink-0">{accurxId}</span>
+                <span className="text-text-primary truncate flex-1">{entries[0].name}</span>
+                <div className="flex gap-1 shrink-0">
+                  {entries.map((e) => {
+                    const account = accounts.find((a) => a.id === e.accountId);
+                    return (
+                      <span key={e.id} className="px-2 py-0.5 rounded text-[10px] font-medium bg-accent/10 text-accent border border-accent/20">
+                        {account?.label || '?'}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={autoResolveDuplicates}
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-accent text-text-on-accent hover:bg-accent-hover transition-colors"
+            >
+              Auto-resolve (keep first assignment)
+            </button>
+            <button
+              onClick={forceContinue}
+              className="px-4 py-2 rounded-xl text-xs font-medium text-text-muted border border-border hover:border-border-strong transition-colors"
+            >
+              Continue anyway
+            </button>
+            <button
+              onClick={() => setShowDuplicates(false)}
+              className="px-4 py-2 rounded-xl text-xs font-medium text-text-muted hover:text-text-secondary transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        </motion.div>
       )}
 
       {/* Account filter tabs + Table */}
