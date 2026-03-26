@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { Database, CheckSquare, Trash2, UserCheck, Users } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Database, CheckSquare, Trash2, UserCheck, Users, FileSpreadsheet, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -26,6 +26,12 @@ const fadeUp = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' as const } },
 } as const;
 
+interface UploadedFile {
+  fileName: string;
+  practices: any[];
+  accountId: string | null;
+}
+
 export default function DataPage() {
   const [practices, setPractices] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -33,6 +39,7 @@ export default function DataPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [assignments, setAssignments] = useState<Record<number, string>>({});
   const [activeAccount, setActiveAccount] = useState<string | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const router = useRouter();
 
   const loadPractices = async () => {
@@ -48,36 +55,104 @@ export default function DataPage() {
     setLoading(false);
   };
 
-  // Import practices and auto-assign them to an account
-  const handleParsedForAccount = useCallback((accountId: string) => (parsed: any[]) => {
-    setPractices((prev) => {
-      const byAccurxId = new Map(prev.map((p) => [p.accurx_id, p]));
-      for (const p of parsed) {
-        byAccurxId.set(p.accurx_id, { ...p, id: byAccurxId.get(p.accurx_id)?.id ?? p.id });
+  // Called by CsvImporter when files are parsed in web mode
+  const handleWebParsed = (parsed: any[]) => {
+    // Group by source_file and add to uploadedFiles
+    const byFile = new Map<string, any[]>();
+    for (const p of parsed) {
+      const file = p.source_file || 'unknown.csv';
+      if (!byFile.has(file)) byFile.set(file, []);
+      byFile.get(file)!.push(p);
+    }
+
+    setUploadedFiles((prev) => {
+      const existing = new Map(prev.map((f) => [f.fileName, f]));
+      for (const [fileName, practices] of byFile) {
+        existing.set(fileName, {
+          fileName,
+          practices,
+          accountId: existing.get(fileName)?.accountId ?? null,
+        });
       }
-      const merged = [...byAccurxId.values()];
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-
-      // Auto-assign new practices to this account
-      setAssignments((prevAssign) => {
-        const updated = { ...prevAssign };
-        for (const p of parsed) {
-          const existing = byAccurxId.get(p.accurx_id);
-          if (existing) updated[existing.id] = accountId;
-        }
-        sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(updated));
-        return updated;
-      });
-
-      return merged;
+      return [...existing.values()];
     });
-    setLoading(false);
-  }, []);
+  };
+
+  // Assign a file to an account and merge its practices
+  const assignFileToAccount = (fileName: string, accountId: string) => {
+    setUploadedFiles((prev) =>
+      prev.map((f) => f.fileName === fileName ? { ...f, accountId } : f)
+    );
+
+    // Rebuild practices and assignments from all files
+    rebuildFromFiles(fileName, accountId);
+  };
+
+  const rebuildFromFiles = (changedFileName?: string, changedAccountId?: string) => {
+    setUploadedFiles((currentFiles) => {
+      const files = changedFileName
+        ? currentFiles.map((f) => f.fileName === changedFileName ? { ...f, accountId: changedAccountId ?? f.accountId } : f)
+        : currentFiles;
+
+      const allPractices: any[] = [];
+      const newAssignments: Record<number, string> = {};
+      const seen = new Map<string, number>();
+
+      for (const file of files) {
+        for (const p of file.practices) {
+          if (!seen.has(p.accurx_id)) {
+            seen.set(p.accurx_id, p.id);
+            allPractices.push(p);
+          }
+          if (file.accountId) {
+            newAssignments[seen.get(p.accurx_id)!] = file.accountId;
+          }
+        }
+      }
+
+      setPractices(allPractices);
+      setAssignments(newAssignments);
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(allPractices));
+      sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssignments));
+      setLoading(false);
+
+      return files;
+    });
+  };
+
+  const removeFile = (fileName: string) => {
+    setUploadedFiles((prev) => {
+      const remaining = prev.filter((f) => f.fileName !== fileName);
+      // Rebuild from remaining files
+      const allPractices: any[] = [];
+      const newAssignments: Record<number, string> = {};
+      const seen = new Map<string, number>();
+
+      for (const file of remaining) {
+        for (const p of file.practices) {
+          if (!seen.has(p.accurx_id)) {
+            seen.set(p.accurx_id, p.id);
+            allPractices.push(p);
+          }
+          if (file.accountId) {
+            newAssignments[seen.get(p.accurx_id)!] = file.accountId;
+          }
+        }
+      }
+
+      setPractices(allPractices);
+      setAssignments(newAssignments);
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(allPractices));
+      sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssignments));
+      return remaining;
+    });
+  };
 
   const handleClear = () => {
     setPractices([]);
     setSelectedIds([]);
     setAssignments({});
+    setUploadedFiles([]);
     sessionStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem(ASSIGNMENTS_KEY);
     sessionStorage.removeItem('selectedPracticeIds');
@@ -119,7 +194,7 @@ export default function DataPage() {
           <h1 className="text-2xl text-text-primary font-[var(--font-display)] tracking-[-0.03em]">
             Data Preview
           </h1>
-          <p className="label mt-2">Upload one CSV per account</p>
+          <p className="label mt-2">Upload CSVs and assign to accounts</p>
         </div>
         <div className="flex gap-3">
           {practices.length > 0 && (
@@ -157,34 +232,62 @@ export default function DataPage() {
         </motion.div>
       </motion.div>
 
-      {/* One drop zone per account */}
-      <div className={`grid gap-4 ${accounts.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-        {accounts.map((account) => {
-          const count = practiceCountByAccount(account.id);
-          return (
-            <div key={account.id} className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-accent/10 text-accent border border-accent/20">
-                    {account.label}
-                  </span>
-                  {count > 0 && (
-                    <span className="text-xs text-text-muted">{count} practices</span>
-                  )}
-                </div>
-                <span className="text-xs text-text-muted">{account.username}</span>
-              </div>
-              <CsvImporter
-                onImported={loadPractices}
-                onParsedWeb={handleParsedForAccount(account.id)}
-                compact={count > 0}
-              />
-            </div>
-          );
-        })}
-      </div>
+      {/* Single drop zone */}
+      <CsvImporter
+        onImported={loadPractices}
+        onParsedWeb={handleWebParsed}
+        compact={uploadedFiles.length > 0}
+      />
 
-      {accounts.length === 0 && (
+      {/* Uploaded files → assign each to an account */}
+      {uploadedFiles.length > 0 && accounts.length > 0 && (
+        <div className="space-y-2">
+          <p className="label">Assign files to accounts</p>
+          <AnimatePresence>
+            {uploadedFiles.map((file) => (
+              <motion.div
+                key={file.fileName}
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, x: 12 }}
+                className="flex items-center gap-3 glass-card rounded-xl px-4 py-3"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-text-muted shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-text-primary truncate">{file.fileName}</p>
+                  <p className="text-xs text-text-muted">{file.practices.length} practices</p>
+                </div>
+
+                {/* Account selector */}
+                <div className="flex gap-1.5 shrink-0">
+                  {accounts.map((account) => (
+                    <button
+                      key={account.id}
+                      onClick={() => assignFileToAccount(file.fileName, account.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        file.accountId === account.id
+                          ? 'bg-accent/15 text-accent border-accent/30'
+                          : 'bg-transparent text-text-muted border-border hover:border-accent/30 hover:text-text-secondary'
+                      }`}
+                    >
+                      {account.label}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => removeFile(file.fileName)}
+                  className="p-1 rounded text-text-muted hover:text-error transition-colors shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {accounts.length === 0 && practices.length === 0 && (
         <div className="glass-card rounded-xl p-6 text-center">
           <p className="text-sm text-text-muted">No accounts added. Go back to the login page to add Accurx accounts first.</p>
         </div>
@@ -196,7 +299,6 @@ export default function DataPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3, duration: 0.4 }}
       >
-        {/* Account filter tabs */}
         {practices.length > 0 && accounts.length > 0 && (
           <div className="flex gap-1 mb-4 bg-bg-root rounded-lg p-1 border border-border-subtle w-fit">
             <button
@@ -238,7 +340,7 @@ export default function DataPage() {
             <EmptyState
               icon={<Database />}
               title="No practices loaded"
-              description="Upload a CSV file for each account above."
+              description="Drop CSV files above, then assign each to an account."
             />
           ) : (
             <DataTable
