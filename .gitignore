@@ -12,6 +12,10 @@ dist/
 dist-electron/
 out/
 .next/
+release/
+
+# Screenshots
+screenshots/
 
 # Environment variables
 .env
