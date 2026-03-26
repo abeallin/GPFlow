@@ -13,7 +13,7 @@ function generateId(): string {
 
 export function getAccounts(): Account[] {
   if (typeof window === 'undefined') return [];
-  const stored = sessionStorage.getItem(STORAGE_KEY);
+  const stored = localStorage.getItem(STORAGE_KEY);
   return stored ? JSON.parse(stored) : [];
 }
 
@@ -26,13 +26,13 @@ export function addAccount(username: string, password: string): Account {
     password,
   };
   accounts.push(account);
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
   return account;
 }
 
 export function removeAccount(id: string): void {
   const accounts = getAccounts().filter((a) => a.id !== id);
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
 }
 
 export function getAccountById(id: string): Account | undefined {

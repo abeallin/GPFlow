@@ -70,21 +70,21 @@ export default function DataPage() {
     if (ipc) {
       ipc.getPractices().then((data) => {
         setPractices(data);
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         setLoading(false);
       });
       ipc.onPracticesUpdated?.(() => {
         ipc!.getPractices().then((data) => {
           setPractices(data);
-          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         });
       });
       return () => { ipc?.removeAllListeners('db:practices-updated'); };
     } else {
       // Web mode: restore from sessionStorage
-      const storedPractices = sessionStorage.getItem(STORAGE_KEY);
-      const storedFiles = sessionStorage.getItem(FILES_KEY);
-      const storedAssign = sessionStorage.getItem(ASSIGNMENTS_KEY);
+      const storedPractices = localStorage.getItem(STORAGE_KEY);
+      const storedFiles = localStorage.getItem(FILES_KEY);
+      const storedAssign = localStorage.getItem(ASSIGNMENTS_KEY);
 
       if (storedPractices) setPractices(JSON.parse(storedPractices));
       if (storedFiles) setUploadedFiles(JSON.parse(storedFiles));
@@ -115,7 +115,7 @@ export default function DataPage() {
       const newPractices = [...byKey.values()].map((p) => ({ ...p, id: nextId++ }));
 
       const merged = [...kept, ...newPractices];
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
       return merged;
     });
 
@@ -136,7 +136,7 @@ export default function DataPage() {
         });
       }
       const updated = [...existing.values()];
-      sessionStorage.setItem(FILES_KEY, JSON.stringify(updated));
+      localStorage.setItem(FILES_KEY, JSON.stringify(updated));
       return updated;
     });
 
@@ -149,13 +149,13 @@ export default function DataPage() {
       const updated = prev.map((f) =>
         f.fileName === fileName ? { ...f, accountId } : f
       );
-      sessionStorage.setItem(FILES_KEY, JSON.stringify(updated));
+      localStorage.setItem(FILES_KEY, JSON.stringify(updated));
 
       // Rebuild assignments based on file → account mapping
       setPractices((currentPractices) => {
         const { assignments: newAssign } = rebuildState(currentPractices, updated);
         setAssignments(newAssign);
-        sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssign));
+        localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssign));
         return currentPractices;
       });
 
@@ -167,19 +167,19 @@ export default function DataPage() {
     // Remove practices from this file and update everything
     setPractices((prev) => {
       const remaining = prev.filter((p) => p.source_file !== fileName);
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(remaining));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(remaining));
       return remaining;
     });
 
     setUploadedFiles((prev) => {
       const updated = prev.filter((f) => f.fileName !== fileName);
-      sessionStorage.setItem(FILES_KEY, JSON.stringify(updated));
+      localStorage.setItem(FILES_KEY, JSON.stringify(updated));
 
       // Rebuild assignments
       setPractices((currentPractices) => {
         const { assignments: newAssign } = rebuildState(currentPractices, updated);
         setAssignments(newAssign);
-        sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssign));
+        localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssign));
         return currentPractices;
       });
 
@@ -192,9 +192,9 @@ export default function DataPage() {
     setSelectedIds([]);
     setAssignments({});
     setUploadedFiles([]);
-    sessionStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem(ASSIGNMENTS_KEY);
-    sessionStorage.removeItem(FILES_KEY);
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(ASSIGNMENTS_KEY);
+    localStorage.removeItem(FILES_KEY);
     sessionStorage.removeItem('selectedPracticeIds');
   };
 
@@ -247,14 +247,14 @@ export default function DataPage() {
       return;
     }
     sessionStorage.setItem('selectedPracticeIds', JSON.stringify(assignedSelected));
-    sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assignments));
+    localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assignments));
     router.push('/templates');
   };
 
   const forceContinue = () => {
     const assignedSelected = selectedIds.filter((id) => assignments[id]);
     sessionStorage.setItem('selectedPracticeIds', JSON.stringify(assignedSelected));
-    sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assignments));
+    localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assignments));
     router.push('/templates');
   };
 

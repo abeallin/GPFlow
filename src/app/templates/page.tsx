@@ -33,10 +33,10 @@ export default function TemplatesPage() {
     const stored = sessionStorage.getItem('selectedPracticeIds');
     if (stored) setSelectedIds(JSON.parse(stored));
 
-    const assignStored = sessionStorage.getItem('gpflow_assignments');
+    const assignStored = localStorage.getItem('gpflow_assignments');
     if (assignStored) setAssignments(JSON.parse(assignStored));
 
-    const practicesStored = sessionStorage.getItem('gpflow_practices');
+    const practicesStored = localStorage.getItem('gpflow_practices');
     if (practicesStored) setPractices(JSON.parse(practicesStored));
 
     setAccounts(getAccounts());
