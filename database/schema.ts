@@ -21,7 +21,8 @@ export function createSchema(db: Database.Database): void {
       success_count INTEGER NOT NULL DEFAULT 0,
       fail_count INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'running'
-        CHECK (status IN ('running', 'completed', 'failed', 'cancelled'))
+        CHECK (status IN ('running', 'completed', 'failed', 'cancelled')),
+      concurrency INTEGER NOT NULL DEFAULT 1
     );
 
     CREATE TABLE IF NOT EXISTS run_steps (
@@ -33,7 +34,8 @@ export function createSchema(db: Database.Database): void {
       error_message TEXT,
       screenshot_path TEXT,
       dom_snapshot TEXT,
-      completed_at TEXT
+      completed_at TEXT,
+      worker_index INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS page_snapshots (

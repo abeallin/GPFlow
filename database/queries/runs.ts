@@ -5,11 +5,12 @@ export function createRun(
   type: 'create' | 'delete',
   templateConfig: Record<string, unknown>,
   practiceIds: number[],
+  concurrency = 1,
 ): number {
   const result = db.prepare(`
-    INSERT INTO runs (type, template_config, total_count)
-    VALUES (?, ?, ?)
-  `).run(type, JSON.stringify(templateConfig), practiceIds.length);
+    INSERT INTO runs (type, template_config, total_count, concurrency)
+    VALUES (?, ?, ?, ?)
+  `).run(type, JSON.stringify(templateConfig), practiceIds.length, concurrency);
 
   const runId = result.lastInsertRowid as number;
 
@@ -34,6 +35,7 @@ export function updateRunStep(
   errorMessage?: string,
   screenshotPath?: string,
   domSnapshot?: string,
+  workerIndex?: number,
 ): void {
   db.prepare(`
     UPDATE run_steps SET
@@ -41,9 +43,10 @@ export function updateRunStep(
       error_message = ?,
       screenshot_path = ?,
       dom_snapshot = ?,
+      worker_index = ?,
       completed_at = datetime('now')
     WHERE id = ?
-  `).run(status, errorMessage || null, screenshotPath || null, domSnapshot || null, stepId);
+  `).run(status, errorMessage || null, screenshotPath || null, domSnapshot || null, workerIndex ?? null, stepId);
 }
 
 export function completeRun(db: Database.Database, runId: number): void {
