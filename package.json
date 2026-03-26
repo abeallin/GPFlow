@@ -1,7 +1,7 @@
 {
   "name": "gpflow-desktop",
   "version": "1.0.0",
-  "description": "",
+  "description": "Automate Accurx template management across GP practices",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently \"next dev --port 3000\" \"electron-vite build && electron .\"",
@@ -22,8 +22,7 @@
     "@tailwindcss/postcss": "^4.2.2",
     "@types/better-sqlite3": "^7.6.13",
     "autoprefixer": "^10.4.27",
-    "better-sqlite3": "11.9.1",
-    "electron": "^41.0.4",
+    "better-sqlite3": "12.8.0",
     "electron-vite": "^5.0.0",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.7.0",
@@ -41,6 +40,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "concurrently": "^9.2.1",
+    "electron": "^41.0.4",
     "electron-builder": "^26.8.1",
     "typescript": "^6.0.2",
     "vitest": "^4.1.1"
