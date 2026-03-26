@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation';
 
 const STORAGE_KEY = 'gpflow_practices';
 const ASSIGNMENTS_KEY = 'gpflow_assignments';
+const FILES_KEY = 'gpflow_uploaded_files';
 
 const staggerContainer = {
   hidden: {},
@@ -28,8 +29,27 @@ const fadeUp = {
 
 interface UploadedFile {
   fileName: string;
-  practices: any[];
+  practiceCount: number;
   accountId: string | null;
+}
+
+// Rebuild practices + assignments from stored data and file mappings
+function rebuildState(
+  allPractices: any[],
+  files: UploadedFile[],
+): { practices: any[]; assignments: Record<number, string> } {
+  const fileAccountMap = new Map<string, string>();
+  for (const f of files) {
+    if (f.accountId) fileAccountMap.set(f.fileName, f.accountId);
+  }
+
+  const assignments: Record<number, string> = {};
+  for (const p of allPractices) {
+    const accountId = fileAccountMap.get(p.source_file);
+    if (accountId) assignments[p.id] = accountId;
+  }
+
+  return { practices: allPractices, assignments };
 }
 
 export default function DataPage() {
@@ -42,109 +62,114 @@ export default function DataPage() {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const router = useRouter();
 
-  const loadPractices = async () => {
-    setLoading(true);
-    if (ipc) {
-      const data = await ipc.getPractices();
-      setPractices(data);
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } else {
-      const stored = sessionStorage.getItem(STORAGE_KEY);
-      if (stored) setPractices(JSON.parse(stored));
-    }
-    setLoading(false);
-  };
+  // Load everything from sessionStorage on mount
+  useEffect(() => {
+    setAccounts(getAccounts());
 
-  // Called by CsvImporter when files are parsed in web mode
+    if (ipc) {
+      ipc.getPractices().then((data) => {
+        setPractices(data);
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        setLoading(false);
+      });
+      ipc.onPracticesUpdated?.(() => {
+        ipc!.getPractices().then((data) => {
+          setPractices(data);
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        });
+      });
+      return () => { ipc?.removeAllListeners('db:practices-updated'); };
+    } else {
+      // Web mode: restore from sessionStorage
+      const storedPractices = sessionStorage.getItem(STORAGE_KEY);
+      const storedFiles = sessionStorage.getItem(FILES_KEY);
+      const storedAssign = sessionStorage.getItem(ASSIGNMENTS_KEY);
+
+      if (storedPractices) setPractices(JSON.parse(storedPractices));
+      if (storedFiles) setUploadedFiles(JSON.parse(storedFiles));
+      if (storedAssign) setAssignments(JSON.parse(storedAssign));
+      setLoading(false);
+    }
+  }, []);
+
+  // Called by CsvImporter when files are parsed
   const handleWebParsed = (parsed: any[]) => {
-    // Group by source_file and add to uploadedFiles
-    const byFile = new Map<string, any[]>();
+    // Merge new practices with existing (dedup by accurx_id)
+    setPractices((prev) => {
+      const byAccurxId = new Map(prev.map((p) => [p.accurx_id, p]));
+      for (const p of parsed) {
+        byAccurxId.set(p.accurx_id, { ...p, id: byAccurxId.get(p.accurx_id)?.id ?? p.id });
+      }
+      const merged = [...byAccurxId.values()];
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      return merged;
+    });
+
+    // Track uploaded files
+    const byFile = new Map<string, number>();
     for (const p of parsed) {
       const file = p.source_file || 'unknown.csv';
-      if (!byFile.has(file)) byFile.set(file, []);
-      byFile.get(file)!.push(p);
+      byFile.set(file, (byFile.get(file) || 0) + 1);
     }
 
     setUploadedFiles((prev) => {
       const existing = new Map(prev.map((f) => [f.fileName, f]));
-      for (const [fileName, practices] of byFile) {
+      for (const [fileName, count] of byFile) {
         existing.set(fileName, {
           fileName,
-          practices,
+          practiceCount: count,
           accountId: existing.get(fileName)?.accountId ?? null,
         });
       }
-      return [...existing.values()];
+      const updated = [...existing.values()];
+      sessionStorage.setItem(FILES_KEY, JSON.stringify(updated));
+      return updated;
     });
+
+    setLoading(false);
   };
 
-  // Assign a file to an account and merge its practices
+  // Assign a file to an account
   const assignFileToAccount = (fileName: string, accountId: string) => {
-    setUploadedFiles((prev) =>
-      prev.map((f) => f.fileName === fileName ? { ...f, accountId } : f)
-    );
+    setUploadedFiles((prev) => {
+      const updated = prev.map((f) =>
+        f.fileName === fileName ? { ...f, accountId } : f
+      );
+      sessionStorage.setItem(FILES_KEY, JSON.stringify(updated));
 
-    // Rebuild practices and assignments from all files
-    rebuildFromFiles(fileName, accountId);
-  };
+      // Rebuild assignments based on file → account mapping
+      setPractices((currentPractices) => {
+        const { assignments: newAssign } = rebuildState(currentPractices, updated);
+        setAssignments(newAssign);
+        sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssign));
+        return currentPractices;
+      });
 
-  const rebuildFromFiles = (changedFileName?: string, changedAccountId?: string) => {
-    setUploadedFiles((currentFiles) => {
-      const files = changedFileName
-        ? currentFiles.map((f) => f.fileName === changedFileName ? { ...f, accountId: changedAccountId ?? f.accountId } : f)
-        : currentFiles;
-
-      const allPractices: any[] = [];
-      const newAssignments: Record<number, string> = {};
-      const seen = new Map<string, number>();
-
-      for (const file of files) {
-        for (const p of file.practices) {
-          if (!seen.has(p.accurx_id)) {
-            seen.set(p.accurx_id, p.id);
-            allPractices.push(p);
-          }
-          if (file.accountId) {
-            newAssignments[seen.get(p.accurx_id)!] = file.accountId;
-          }
-        }
-      }
-
-      setPractices(allPractices);
-      setAssignments(newAssignments);
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(allPractices));
-      sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssignments));
-      setLoading(false);
-
-      return files;
+      return updated;
     });
   };
 
   const removeFile = (fileName: string) => {
-    setUploadedFiles((prev) => {
-      const remaining = prev.filter((f) => f.fileName !== fileName);
-      // Rebuild from remaining files
-      const allPractices: any[] = [];
-      const newAssignments: Record<number, string> = {};
-      const seen = new Map<string, number>();
-
-      for (const file of remaining) {
-        for (const p of file.practices) {
-          if (!seen.has(p.accurx_id)) {
-            seen.set(p.accurx_id, p.id);
-            allPractices.push(p);
-          }
-          if (file.accountId) {
-            newAssignments[seen.get(p.accurx_id)!] = file.accountId;
-          }
-        }
-      }
-
-      setPractices(allPractices);
-      setAssignments(newAssignments);
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(allPractices));
-      sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssignments));
+    // Remove practices from this file and update everything
+    setPractices((prev) => {
+      const remaining = prev.filter((p) => p.source_file !== fileName);
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(remaining));
       return remaining;
+    });
+
+    setUploadedFiles((prev) => {
+      const updated = prev.filter((f) => f.fileName !== fileName);
+      sessionStorage.setItem(FILES_KEY, JSON.stringify(updated));
+
+      // Rebuild assignments
+      setPractices((currentPractices) => {
+        const { assignments: newAssign } = rebuildState(currentPractices, updated);
+        setAssignments(newAssign);
+        sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssign));
+        return currentPractices;
+      });
+
+      return updated;
     });
   };
 
@@ -155,6 +180,7 @@ export default function DataPage() {
     setUploadedFiles([]);
     sessionStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem(ASSIGNMENTS_KEY);
+    sessionStorage.removeItem(FILES_KEY);
     sessionStorage.removeItem('selectedPracticeIds');
   };
 
@@ -164,22 +190,10 @@ export default function DataPage() {
     router.push('/templates');
   };
 
-  useEffect(() => {
-    loadPractices();
-    setAccounts(getAccounts());
-
-    const stored = sessionStorage.getItem(ASSIGNMENTS_KEY);
-    if (stored) setAssignments(JSON.parse(stored));
-
-    if (ipc) {
-      ipc.onPracticesUpdated?.(() => loadPractices());
-      return () => { ipc?.removeAllListeners('db:practices-updated'); };
-    }
-  }, []);
-
   const assignedCount = Object.keys(assignments).length;
   const practiceCountByAccount = (accountId: string) =>
     Object.values(assignments).filter((id) => id === accountId).length;
+  const hasData = practices.length > 0;
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -197,7 +211,7 @@ export default function DataPage() {
           <p className="label mt-2">Upload CSVs and assign to accounts</p>
         </div>
         <div className="flex gap-3">
-          {practices.length > 0 && (
+          {hasData && (
             <Button variant="ghost" onClick={handleClear} icon={<Trash2 className="w-4 h-4" />}>
               Clear All
             </Button>
@@ -234,12 +248,12 @@ export default function DataPage() {
 
       {/* Single drop zone */}
       <CsvImporter
-        onImported={loadPractices}
+        onImported={() => {}}
         onParsedWeb={handleWebParsed}
-        compact={uploadedFiles.length > 0}
+        compact={hasData}
       />
 
-      {/* Uploaded files → assign each to an account */}
+      {/* Uploaded files — assign each to an account */}
       {uploadedFiles.length > 0 && accounts.length > 0 && (
         <div className="space-y-2">
           <p className="label">Assign files to accounts</p>
@@ -255,10 +269,9 @@ export default function DataPage() {
                 <FileSpreadsheet className="w-4 h-4 text-text-muted shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-text-primary truncate">{file.fileName}</p>
-                  <p className="text-xs text-text-muted">{file.practices.length} practices</p>
+                  <p className="text-xs text-text-muted">{file.practiceCount} practices</p>
                 </div>
 
-                {/* Account selector */}
                 <div className="flex gap-1.5 shrink-0">
                   {accounts.map((account) => (
                     <button
@@ -287,7 +300,7 @@ export default function DataPage() {
         </div>
       )}
 
-      {accounts.length === 0 && practices.length === 0 && (
+      {accounts.length === 0 && !hasData && (
         <div className="glass-card rounded-xl p-6 text-center">
           <p className="text-sm text-text-muted">No accounts added. Go back to the login page to add Accurx accounts first.</p>
         </div>
@@ -299,7 +312,7 @@ export default function DataPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3, duration: 0.4 }}
       >
-        {practices.length > 0 && accounts.length > 0 && (
+        {hasData && accounts.length > 0 && (
           <div className="flex gap-1 mb-4 bg-bg-root rounded-lg p-1 border border-border-subtle w-fit">
             <button
               onClick={() => setActiveAccount(null)}
@@ -336,7 +349,7 @@ export default function DataPage() {
               <Skeleton className="h-10 w-full" />
               {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
-          ) : practices.length === 0 ? (
+          ) : !hasData ? (
             <EmptyState
               icon={<Database />}
               title="No practices loaded"
