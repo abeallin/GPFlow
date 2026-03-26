@@ -109,9 +109,8 @@ export default function DataPage() {
         if (!byKey.has(key)) byKey.set(key, p);
       }
 
-      // Assign unique IDs to new practices
-      const maxId = kept.reduce((max, p) => Math.max(max, p.id || 0), 0);
-      let nextId = maxId + 1;
+      // Assign globally unique IDs to new practices
+      let nextId = Date.now();
       const newPractices = [...byKey.values()].map((p) => ({ ...p, id: nextId++ }));
 
       const merged = [...kept, ...newPractices];
