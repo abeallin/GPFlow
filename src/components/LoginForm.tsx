@@ -1,13 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { User, Lock, Key } from 'lucide-react';
-import { Input } from './ui/Input';
-import { Button } from './ui/Button';
-import { Card } from './ui/Card';
-import { LicenseValidator } from './LicenseValidator';
+import { motion, AnimatePresence } from 'framer-motion';
+import { User, Lock, Trash2, Plus, ArrowRight } from 'lucide-react';
 import { LogoHero } from './ui/Logo';
+import { type Account, getAccounts, addAccount, removeAccount } from '@/lib/accounts';
 import { ipc } from '@/lib/ipc-client';
 
 interface LoginFormProps {
@@ -15,13 +12,13 @@ interface LoginFormProps {
 }
 
 export function LoginForm({ onSuccess }: LoginFormProps) {
+  const [accounts, setAccounts] = useState<Account[]>(getAccounts);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [licenseValid, setLicenseValid] = useState(true); // TODO: restore to false when MongoDB is connected
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [showForm, setShowForm] = useState(true);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleAddAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -30,17 +27,36 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       return;
     }
 
-    setLoading(true);
-    try {
-      if (ipc) {
-        await ipc.saveCredentials({ username, password, licenseKey: '' });
-      }
-      onSuccess();
-    } catch {
-      setError('Login failed. Please try again.');
-    } finally {
-      setLoading(false);
+    // Check for duplicate
+    if (accounts.some((a) => a.username.toLowerCase() === username.trim().toLowerCase())) {
+      setError('This account has already been added');
+      return;
     }
+
+    const account = addAccount(username.trim(), password);
+
+    // Also save to Electron if available
+    if (ipc) {
+      try {
+        await ipc.saveCredentials({ username: account.username, password: account.password, licenseKey: '' });
+      } catch {
+        // Non-critical — web mode doesn't have IPC
+      }
+    }
+
+    setAccounts(getAccounts());
+    setUsername('');
+    setPassword('');
+    setShowForm(false);
+  };
+
+  const handleRemove = (id: string) => {
+    removeAccount(id);
+    setAccounts(getAccounts());
+  };
+
+  const handleContinue = () => {
+    if (accounts.length > 0) onSuccess();
   };
 
   return (
@@ -64,23 +80,6 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       {/* Noise overlay */}
       <div className="absolute inset-0 noise-overlay pointer-events-none" />
 
-      {/* Floating orbs */}
-      <motion.div
-        animate={{ y: [-8, 8, -8] }}
-        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-        className="absolute top-[15%] left-[12%] w-2 h-2 rounded-full bg-accent/20 blur-[1px]"
-      />
-      <motion.div
-        animate={{ y: [6, -6, 6] }}
-        transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-        className="absolute bottom-[25%] right-[18%] w-1.5 h-1.5 rounded-full bg-accent/15 blur-[1px]"
-      />
-      <motion.div
-        animate={{ y: [-4, 10, -4] }}
-        transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
-        className="absolute top-[40%] right-[10%] w-1 h-1 rounded-full bg-info/20 blur-[1px]"
-      />
-
       <motion.div
         initial={{ opacity: 0, y: 28 }}
         animate={{ opacity: 1, y: 0 }}
@@ -97,81 +96,146 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           <LogoHero />
         </motion.div>
 
-        {/* Login Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
-          className="glass-card-strong rounded-2xl p-8"
-          style={{ boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04)' }}
-        >
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-text-secondary tracking-wide uppercase">
-                Username
-              </label>
-              <div className="relative">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted">
-                  <User className="w-4 h-4" />
-                </div>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter your Accurx username"
-                  className="w-full pl-11 pr-4 py-3 bg-bg-input border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/40 transition-all duration-200"
-                />
-              </div>
-            </div>
+        {/* Account list */}
+        {accounts.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 space-y-2"
+          >
+            <p className="text-xs font-medium text-text-secondary uppercase tracking-wide mb-3">
+              Accurx Accounts ({accounts.length})
+            </p>
+            <AnimatePresence>
+              {accounts.map((account) => (
+                <motion.div
+                  key={account.id}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 12, height: 0 }}
+                  className="flex items-center justify-between glass-card rounded-xl px-4 py-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+                      <User className="w-4 h-4 text-accent" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">{account.label}</p>
+                      <p className="text-xs text-text-muted truncate">{account.username}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleRemove(account.id)}
+                    className="p-1.5 rounded-lg text-text-muted hover:text-error hover:bg-error/10 transition-colors shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
+        )}
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-text-secondary tracking-wide uppercase">
-                Password
-              </label>
-              <div className="relative">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted">
-                  <Lock className="w-4 h-4" />
-                </div>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your Accurx password"
-                  className="w-full pl-11 pr-4 py-3 bg-bg-input border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/40 transition-all duration-200"
-                />
-              </div>
-            </div>
-
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-sm text-error bg-error/10 border border-error/20 rounded-xl px-4 py-3 backdrop-blur-sm"
-              >
-                {error}
-              </motion.div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 rounded-xl text-sm font-semibold text-text-on-accent bg-accent hover:bg-accent-hover transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
-              style={{ boxShadow: loading ? 'none' : '0 0 20px rgba(16, 224, 160, 0.25), 0 4px 12px rgba(16, 224, 160, 0.15)' }}
+        {/* Add Account Form */}
+        <AnimatePresence mode="wait">
+          {(showForm || accounts.length === 0) ? (
+            <motion.div
+              key="form"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.3 }}
+              className="glass-card-strong rounded-2xl p-8"
+              style={{ boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04)' }}
             >
-              {loading ? (
-                <span className="inline-flex items-center gap-2">
-                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-25" />
-                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
-                  </svg>
-                  Signing in...
-                </span>
-              ) : (
-                'Sign In'
-              )}
-            </button>
-          </form>
-        </motion.div>
+              <p className="text-xs font-medium text-text-secondary uppercase tracking-wide mb-5">
+                {accounts.length === 0 ? 'Add Accurx Account' : 'Add Another Account'}
+              </p>
+              <form onSubmit={handleAddAccount} className="space-y-5">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-text-secondary tracking-wide uppercase">
+                    Username
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="Enter your Accurx username"
+                      className="w-full pl-11 pr-4 py-3 bg-bg-input border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/40 transition-all duration-200"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-text-secondary tracking-wide uppercase">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your Accurx password"
+                      className="w-full pl-11 pr-4 py-3 bg-bg-input border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/40 transition-all duration-200"
+                    />
+                  </div>
+                </div>
+
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-sm text-error bg-error/10 border border-error/20 rounded-xl px-4 py-3 backdrop-blur-sm"
+                  >
+                    {error}
+                  </motion.div>
+                )}
+
+                <button
+                  type="submit"
+                  className="w-full py-3 rounded-xl text-sm font-semibold text-text-on-accent bg-accent hover:bg-accent-hover transition-all duration-200 mt-2 inline-flex items-center justify-center gap-2"
+                  style={{ boxShadow: '0 0 20px rgba(16, 224, 160, 0.25), 0 4px 12px rgba(16, 224, 160, 0.15)' }}
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Account
+                </button>
+              </form>
+            </motion.div>
+          ) : (
+            <motion.button
+              key="add-btn"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowForm(true)}
+              className="w-full py-3 rounded-xl text-sm font-medium text-text-secondary border border-border-strong border-dashed hover:border-accent/40 hover:text-text-primary transition-all duration-200 inline-flex items-center justify-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Add Another Account
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        {/* Continue button */}
+        {accounts.length > 0 && (
+          <motion.button
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            onClick={handleContinue}
+            className="w-full py-3.5 mt-4 rounded-xl text-sm font-semibold text-text-on-accent bg-accent hover:bg-accent-hover transition-all duration-200 inline-flex items-center justify-center gap-2"
+            style={{ boxShadow: '0 0 20px rgba(16, 224, 160, 0.25), 0 4px 12px rgba(16, 224, 160, 0.15)' }}
+          >
+            Continue to Data
+            <ArrowRight className="w-4 h-4" />
+          </motion.button>
+        )}
 
         <motion.p
           initial={{ opacity: 0 }}

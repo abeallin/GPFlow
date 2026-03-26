@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Card } from '@/components/ui/Card';
 import { Tabs } from '@/components/ui/Tabs';
 import { Select } from '@/components/ui/Select';
 import { TemplateForm } from '@/components/TemplateForm';
 import { ipc } from '@/lib/ipc-client';
+import { getAccounts, getAccountById, type Account } from '@/lib/accounts';
 import { useRouter } from 'next/navigation';
 
 interface TemplateConfig {
@@ -19,23 +19,70 @@ interface TemplateConfig {
 
 export default function TemplatesPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [assignments, setAssignments] = useState<Record<number, string>>({});
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [screenshotMode, setScreenshotMode] = useState<string>('on-failure');
   const router = useRouter();
 
   useEffect(() => {
     const stored = sessionStorage.getItem('selectedPracticeIds');
     if (stored) setSelectedIds(JSON.parse(stored));
+
+    const assignStored = sessionStorage.getItem('gpflow_assignments');
+    if (assignStored) setAssignments(JSON.parse(assignStored));
+
+    setAccounts(getAccounts());
   }, []);
+
+  // Group selected practices by account
+  const groupedByAccount = useMemo(() => {
+    const groups: Record<string, { account: Account; practiceIds: number[] }> = {};
+    const unassigned: number[] = [];
+
+    for (const id of selectedIds) {
+      const accountId = assignments[id];
+      if (accountId) {
+        if (!groups[accountId]) {
+          const account = getAccountById(accountId);
+          if (account) groups[accountId] = { account, practiceIds: [] };
+        }
+        groups[accountId]?.practiceIds.push(id);
+      } else {
+        unassigned.push(id);
+      }
+    }
+    return { groups, unassigned };
+  }, [selectedIds, assignments]);
 
   const startRun = async (config: TemplateConfig, type: 'create' | 'delete') => {
     if (!ipc) return;
-    const { runId } = await ipc.startRun({
-      type,
-      templateConfig: config,
-      practiceIds: selectedIds,
-      screenshotMode,
-    });
-    router.push(`/runs?active=${runId}`);
+
+    const { groups } = groupedByAccount;
+    const accountEntries = Object.values(groups);
+
+    if (accountEntries.length === 0) {
+      // No assignments — run with all selected (legacy behavior)
+      const { runId } = await ipc.startRun({
+        type,
+        templateConfig: config,
+        practiceIds: selectedIds,
+        screenshotMode,
+      });
+      router.push(`/runs?active=${runId}`);
+      return;
+    }
+
+    // Start one run per account
+    for (const { account, practiceIds } of accountEntries) {
+      await ipc.startRun({
+        type,
+        templateConfig: config,
+        practiceIds,
+        screenshotMode,
+        credentials: { username: account.username, password: account.password },
+      });
+    }
+    router.push('/runs');
   };
 
   return (
@@ -49,13 +96,21 @@ export default function TemplatesPage() {
         <h1 className="text-2xl text-text-primary font-[var(--font-display)] tracking-[-0.03em]">
           Template Management
         </h1>
-        <div className="flex items-center gap-2 mt-1.5">
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
           <span className="text-sm text-text-muted">
             {selectedIds.length} practices selected
           </span>
-          {selectedIds.length > 0 && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-accent/10 text-accent border border-accent/20">
-              {selectedIds.length}
+          {Object.values(groupedByAccount.groups).map(({ account, practiceIds }) => (
+            <span
+              key={account.id}
+              className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-accent/10 text-accent border border-accent/20"
+            >
+              {account.label}: {practiceIds.length}
+            </span>
+          ))}
+          {groupedByAccount.unassigned.length > 0 && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-warning/10 text-warning border border-warning/20">
+              Unassigned: {groupedByAccount.unassigned.length}
             </span>
           )}
         </div>

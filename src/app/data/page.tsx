@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Database, CheckSquare, Upload, FolderOpen, Trash2 } from 'lucide-react';
+import { Database, CheckSquare, Upload, FolderOpen, Trash2, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -10,9 +10,11 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { DataTable } from '@/components/DataTable';
 import { CsvImporter } from '@/components/CsvImporter';
 import { ipc } from '@/lib/ipc-client';
+import { getAccounts, type Account } from '@/lib/accounts';
 import { useRouter } from 'next/navigation';
 
 const STORAGE_KEY = 'gpflow_practices';
+const ASSIGNMENTS_KEY = 'gpflow_assignments';
 
 const staggerContainer = {
   hidden: {},
@@ -29,6 +31,9 @@ export default function DataPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [importFolder, setImportFolder] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  // Map of practice id → account id
+  const [assignments, setAssignments] = useState<Record<number, string>>({});
   const router = useRouter();
 
   const loadPractices = async () => {
@@ -38,7 +43,6 @@ export default function DataPage() {
       setPractices(data);
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } else {
-      // Browser mode: restore from sessionStorage
       const stored = sessionStorage.getItem(STORAGE_KEY);
       if (stored) {
         setPractices(JSON.parse(stored));
@@ -56,27 +60,49 @@ export default function DataPage() {
   const handleClear = () => {
     setPractices([]);
     setSelectedIds([]);
+    setAssignments({});
     sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(ASSIGNMENTS_KEY);
     sessionStorage.removeItem('selectedPracticeIds');
+  };
+
+  const assignToAccount = (accountId: string) => {
+    const updated = { ...assignments };
+    for (const id of selectedIds) {
+      updated[id] = accountId;
+    }
+    setAssignments(updated);
+    sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(updated));
+    setSelectedIds([]);
+  };
+
+  const handleContinue = () => {
+    // Store practices with their account assignments
+    const selectedWithAccounts = practices
+      .filter((p) => selectedIds.includes(p.id))
+      .map((p) => ({ ...p, accountId: assignments[p.id] }));
+    sessionStorage.setItem('selectedPracticeIds', JSON.stringify(selectedIds));
+    sessionStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assignments));
+    router.push('/templates');
   };
 
   useEffect(() => {
     loadPractices();
+    setAccounts(getAccounts());
 
-    // Get import folder path (Electron only)
+    // Restore assignments
+    const stored = sessionStorage.getItem(ASSIGNMENTS_KEY);
+    if (stored) setAssignments(JSON.parse(stored));
+
     if (ipc) {
       ipc.getImportFolder?.().then(setImportFolder).catch(() => {});
-
-      // Listen for auto-import events
-      ipc.onPracticesUpdated?.(() => {
-        loadPractices();
-      });
-
-      return () => {
-        ipc?.removeAllListeners('db:practices-updated');
-      };
+      ipc.onPracticesUpdated?.(() => loadPractices());
+      return () => { ipc?.removeAllListeners('db:practices-updated'); };
     }
   }, []);
+
+  const assignedCount = Object.keys(assignments).length;
+  const unassignedSelected = selectedIds.filter((id) => !assignments[id]).length;
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -100,10 +126,7 @@ export default function DataPage() {
             </Button>
           )}
           <button
-            onClick={() => {
-              sessionStorage.setItem('selectedPracticeIds', JSON.stringify(selectedIds));
-              router.push('/templates');
-            }}
+            onClick={handleContinue}
             disabled={selectedIds.length === 0}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-accent text-text-on-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
             style={{ boxShadow: selectedIds.length > 0 ? '0 0 16px rgba(16, 224, 160, 0.2)' : 'none' }}
@@ -125,17 +148,38 @@ export default function DataPage() {
           <StatCard label="Total Practices" value={loading ? '...' : practices.length} icon={<Database />} />
         </motion.div>
         <motion.div variants={fadeUp}>
-          <StatCard label="Selected" value={selectedIds.length} icon={<CheckSquare />} />
+          <StatCard label="Assigned" value={`${assignedCount}/${practices.length}`} icon={<UserCheck />} />
         </motion.div>
         <motion.div variants={fadeUp}>
-          <StatCard label="Data Source" value="CSV" icon={<Upload />} />
+          <StatCard label="Accounts" value={accounts.length} icon={<Upload />} />
         </motion.div>
       </motion.div>
 
-      {/* Drop Zone — compact when data is loaded */}
+      {/* Account assignment toolbar — appears when practices are selected */}
+      {selectedIds.length > 0 && accounts.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-3 glass-card rounded-xl px-4 py-3"
+        >
+          <span className="text-sm text-text-secondary">
+            Assign {selectedIds.length} selected to:
+          </span>
+          {accounts.map((account) => (
+            <button
+              key={account.id}
+              onClick={() => assignToAccount(account.id)}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
+            >
+              {account.label}
+            </button>
+          ))}
+        </motion.div>
+      )}
+
+      {/* Drop Zone */}
       <CsvImporter onImported={loadPractices} onParsedWeb={handleWebParsed} compact={practices.length > 0} />
 
-      {/* Import folder hint (Electron only) */}
       {importFolder && (
         <div className="flex items-center gap-2 text-text-muted text-xs">
           <FolderOpen className="w-3.5 h-3.5" />
@@ -162,7 +206,12 @@ export default function DataPage() {
               description="Drag and drop a CSV file above, or click the drop zone to browse."
             />
           ) : (
-            <DataTable practices={practices} onSelectionChange={setSelectedIds} />
+            <DataTable
+              practices={practices}
+              onSelectionChange={setSelectedIds}
+              assignments={assignments}
+              accounts={accounts}
+            />
           )}
         </div>
       </motion.div>

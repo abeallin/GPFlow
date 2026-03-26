@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { Input } from './ui/Input';
+import type { Account } from '@/lib/accounts';
 
 interface Practice {
   id: number;
@@ -15,6 +16,8 @@ interface Practice {
 interface DataTableProps {
   practices: Practice[];
   onSelectionChange: (ids: number[]) => void;
+  assignments?: Record<number, string>;
+  accounts?: Account[];
 }
 
 const PAGE_SIZE = 50;
@@ -28,7 +31,12 @@ function formatHeader(key: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function DataTable({ practices, onSelectionChange }: DataTableProps) {
+export function DataTable({ practices, onSelectionChange, assignments = {}, accounts = [] }: DataTableProps) {
+  const accountMap = useMemo(() => {
+    const map: Record<string, Account> = {};
+    for (const a of accounts) map[a.id] = a;
+    return map;
+  }, [accounts]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [sortField, setSortField] = useState<string>('name');
   const [sortAsc, setSortAsc] = useState(true);
@@ -114,6 +122,11 @@ export function DataTable({ practices, onSelectionChange }: DataTableProps) {
                   className="rounded accent-accent"
                 />
               </th>
+              {accounts.length > 0 && (
+                <th className="p-3 text-left whitespace-nowrap">
+                  <span className="font-semibold text-xs uppercase tracking-wider text-text-secondary">Account</span>
+                </th>
+              )}
               {columns.map((col) => (
                 <th
                   key={col}
@@ -150,6 +163,17 @@ export function DataTable({ practices, onSelectionChange }: DataTableProps) {
                     className="rounded accent-accent"
                   />
                 </td>
+                {accounts.length > 0 && (
+                  <td className="p-3 whitespace-nowrap">
+                    {assignments[practice.id] ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-accent/10 text-accent border border-accent/20">
+                        {accountMap[assignments[practice.id]]?.label || '?'}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-text-muted">—</span>
+                    )}
+                  </td>
+                )}
                 {columns.map((col) => (
                   <td
                     key={col}
