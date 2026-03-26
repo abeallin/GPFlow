@@ -38,8 +38,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {/* Frosted glass sheen */}
           <div className="absolute inset-0 backdrop-blur-sm bg-[#090B12]/80 pointer-events-none" />
 
-          {/* Logo + collapse toggle */}
-          <div className="relative z-10 px-3 py-5 border-b border-border flex items-center justify-between min-h-[68px]">
+          {/* Logo + collapse toggle — draggable for custom titlebar */}
+          <div className="relative z-10 px-3 pt-9 pb-5 border-b border-border flex items-center justify-between min-h-[68px] drag-region">
             <AnimatePresence mode="wait">
               {!collapsed && (
                 <motion.div
@@ -55,7 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </AnimatePresence>
             <button
               onClick={() => setCollapsed(!collapsed)}
-              className="p-2 rounded-lg text-text-muted hover:text-text-secondary hover:bg-sidebar-hover transition-all duration-200 shrink-0"
+              className="p-2 rounded-lg text-text-muted hover:text-text-secondary hover:bg-sidebar-hover transition-all duration-200 shrink-0 no-drag"
               title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               {collapsed ? (
@@ -118,6 +118,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         {/* Main content */}
         <main className="flex-1 overflow-auto bg-bg-base relative noise-overlay">
+          {/* Titlebar drag region for main area */}
+          <div className="h-9 drag-region shrink-0 bg-bg-base sticky top-0 z-50" />
           <div className="relative z-10 min-h-full">
             <AnimatePresence mode="wait">
               <motion.div

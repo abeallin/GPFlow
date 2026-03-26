@@ -18,6 +18,13 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     title: 'GP Flow',
+    backgroundColor: '#070910',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#070910',
+      symbolColor: '#8B8BA3',
+      height: 36,
+    },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -29,7 +36,9 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../.next/out/index.html'));
+    // Static export is in 'out/' at project root
+    // In packaged app, __dirname = resources/app.asar/dist-electron
+    mainWindow.loadFile(path.join(__dirname, '../out/index.html'));
   }
 }
 
