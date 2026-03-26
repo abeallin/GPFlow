@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { Input } from './ui/Input';
-import { Button } from './ui/Button';
 
 interface Practice {
   id: number;
@@ -18,7 +17,16 @@ interface DataTableProps {
   onSelectionChange: (ids: number[]) => void;
 }
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 50;
+
+// Columns to always hide
+const HIDDEN_COLUMNS = new Set(['id']);
+
+function formatHeader(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export function DataTable({ practices, onSelectionChange }: DataTableProps) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -27,15 +35,30 @@ export function DataTable({ practices, onSelectionChange }: DataTableProps) {
   const [filter, setFilter] = useState('');
   const [page, setPage] = useState(0);
 
-  const filtered = practices.filter((p) =>
-    p.name.toLowerCase().includes(filter.toLowerCase()) ||
-    p.accurx_id.includes(filter)
-  );
+  // Dynamically discover columns from data
+  const columns = useMemo(() => {
+    if (practices.length === 0) return [];
+    const allKeys = new Set<string>();
+    for (const p of practices) {
+      for (const key of Object.keys(p)) {
+        if (!HIDDEN_COLUMNS.has(key)) allKeys.add(key);
+      }
+    }
+    // Show accurx_id first (required column), then rest in CSV order
+    const rest = [...allKeys].filter((k) => k !== 'accurx_id');
+    const priority = allKeys.has('accurx_id') ? ['accurx_id'] : [];
+    return [...priority, ...rest];
+  }, [practices]);
+
+  const filtered = practices.filter((p) => {
+    const q = filter.toLowerCase();
+    return columns.some((col) => String(p[col] || '').toLowerCase().includes(q));
+  });
 
   const sorted = [...filtered].sort((a, b) => {
-    const aVal = (a as any)[sortField] || '';
-    const bVal = (b as any)[sortField] || '';
-    return sortAsc ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
+    const aVal = String(a[sortField] || '');
+    const bVal = String(b[sortField] || '');
+    return sortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
   });
 
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
@@ -73,17 +96,17 @@ export function DataTable({ practices, onSelectionChange }: DataTableProps) {
   return (
     <div className="space-y-4">
       <Input
-        placeholder="Search practices..."
+        placeholder="Search across all columns..."
         value={filter}
         onChange={(e) => { setFilter(e.target.value); setPage(0); }}
         icon={<Search className="w-4 h-4 text-text-muted" />}
       />
 
-      <div className="overflow-auto rounded-xl border border-border-subtle glass-card">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-xl border border-border-subtle glass-card">
+        <table className="min-w-full text-sm">
           <thead className="bg-bg-overlay sticky top-0 z-10">
             <tr>
-              <th className="p-3 text-left w-12">
+              <th className="p-3 text-left w-12 sticky left-0 bg-bg-overlay z-20">
                 <input
                   type="checkbox"
                   onChange={toggleAll}
@@ -91,46 +114,35 @@ export function DataTable({ practices, onSelectionChange }: DataTableProps) {
                   className="rounded accent-accent"
                 />
               </th>
-              <th
-                className={`p-3 text-left cursor-pointer transition-colors select-none ${
-                  sortField === 'name' ? 'bg-bg-overlay/80' : 'hover:bg-bg-overlay/50'
-                }`}
-                onClick={() => handleSort('name')}
-              >
-                <span className={`inline-flex items-center gap-1 font-semibold text-xs uppercase tracking-wider ${
-                  sortField === 'name' ? 'text-accent' : 'text-text-secondary'
-                }`}>
-                  Name <SortIcon field="name" />
-                </span>
-              </th>
-              <th
-                className={`p-3 text-left cursor-pointer transition-colors select-none ${
-                  sortField === 'accurx_id' ? 'bg-bg-overlay/80' : 'hover:bg-bg-overlay/50'
-                }`}
-                onClick={() => handleSort('accurx_id')}
-              >
-                <span className={`inline-flex items-center gap-1 font-semibold text-xs uppercase tracking-wider ${
-                  sortField === 'accurx_id' ? 'text-accent' : 'text-text-secondary'
-                }`}>
-                  Accurx ID <SortIcon field="accurx_id" />
-                </span>
-              </th>
-              <th className="p-3 text-left">
-                <span className="text-text-secondary font-semibold text-xs uppercase tracking-wider">Source</span>
-              </th>
+              {columns.map((col) => (
+                <th
+                  key={col}
+                  className={`p-3 text-left cursor-pointer transition-colors select-none whitespace-nowrap ${
+                    sortField === col ? 'bg-bg-overlay/80' : 'hover:bg-bg-overlay/50'
+                  }`}
+                  onClick={() => handleSort(col)}
+                >
+                  <span className={`inline-flex items-center gap-1 font-semibold text-xs uppercase tracking-wider ${
+                    sortField === col ? 'text-accent' : 'text-text-secondary'
+                  }`}>
+                    {formatHeader(col)} <SortIcon field={col} />
+                  </span>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle">
             {paged.map((practice) => (
               <tr
                 key={practice.id}
-                className={`transition-colors duration-150 ${
+                onClick={() => toggleOne(practice.id)}
+                className={`cursor-pointer transition-colors duration-150 ${
                   selectedIds.has(practice.id)
                     ? 'bg-accent-subtle/20'
                     : 'hover:bg-bg-overlay/40'
                 }`}
               >
-                <td className="p-3">
+                <td className="p-3 sticky left-0 bg-inherit" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="checkbox"
                     checked={selectedIds.has(practice.id)}
@@ -138,9 +150,17 @@ export function DataTable({ practices, onSelectionChange }: DataTableProps) {
                     className="rounded accent-accent"
                   />
                 </td>
-                <td className="p-3 text-text-primary font-medium">{practice.name}</td>
-                <td className="p-3 font-mono text-xs text-text-secondary">{practice.accurx_id}</td>
-                <td className="p-3 text-text-muted text-xs">{practice.source_file}</td>
+                {columns.map((col) => (
+                  <td
+                    key={col}
+                    className={`p-3 max-w-[250px] truncate ${
+                      col === 'accurx_id' ? 'font-mono text-xs text-text-secondary' : 'text-text-primary'
+                    }`}
+                    title={String(practice[col] || '')}
+                  >
+                    {practice[col] || ''}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>
@@ -152,19 +172,9 @@ export function DataTable({ practices, onSelectionChange }: DataTableProps) {
         <span className="text-text-secondary">
           {selectedIds.size} of {sorted.length} selected
         </span>
-        {totalPages > 1 && (
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <span className="text-text-muted text-xs tabular-nums">
-              Page {page + 1} of {totalPages}
-            </span>
-            <Button variant="ghost" size="sm" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}>
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </div>
-        )}
+        <span className="text-text-muted text-xs">
+          {sorted.length} {sorted.length === 1 ? 'practice' : 'practices'}
+        </span>
       </div>
     </div>
   );

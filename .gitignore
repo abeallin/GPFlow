@@ -17,6 +17,9 @@ release/
 # Screenshots
 screenshots/
 
+# Data files (may contain sensitive NHS data)
+/data/
+
 # Environment variables
 .env
 .env.*

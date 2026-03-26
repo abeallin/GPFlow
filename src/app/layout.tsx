@@ -1,7 +1,7 @@
 'use client';
 
 import './globals.css';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Database, FileText, Play, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
@@ -20,6 +20,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('sidebar_collapsed');
+    if (saved === 'true') setCollapsed(true);
+  }, []);
+
+  const toggleCollapsed = (value: boolean) => {
+    setCollapsed(value);
+    localStorage.setItem('sidebar_collapsed', String(value));
+  };
 
   const handleLogout = async () => {
     try {
@@ -41,7 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="en">
-      <body className="min-h-screen flex bg-bg-root">
+      <body className="h-screen flex bg-bg-root overflow-x-hidden">
         {/* Sidebar */}
         <motion.nav
           animate={{ width: collapsed ? 64 : 256 }}
@@ -67,7 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               )}
             </AnimatePresence>
             <button
-              onClick={() => setCollapsed(!collapsed)}
+              onClick={() => toggleCollapsed(!collapsed)}
               className="p-2 rounded-lg text-text-muted hover:text-text-secondary hover:bg-sidebar-hover transition-all duration-200 shrink-0 no-drag"
               title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
@@ -139,8 +149,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </motion.nav>
 
-        {/* Main content */}
-        <main className="flex-1 overflow-auto bg-bg-base relative noise-overlay">
+        {/* Main content — click to collapse sidebar */}
+        <main
+          className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-bg-base relative noise-overlay"
+          onClick={() => { if (!collapsed) toggleCollapsed(true); }}
+        >
           {/* Titlebar drag region for main area */}
           <div className="h-9 drag-region shrink-0 bg-bg-base sticky top-0 z-50" />
           <div className="relative z-10 min-h-full">

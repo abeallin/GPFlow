@@ -2,17 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Database, CheckSquare, Upload, FolderOpen } from 'lucide-react';
-import { Card } from '@/components/ui/Card';
+import { Database, CheckSquare, Upload, FolderOpen, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { StatCard } from '@/components/ui/StatCard';
-import { Alert } from '@/components/ui/Alert';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { DataTable } from '@/components/DataTable';
 import { CsvImporter } from '@/components/CsvImporter';
 import { ipc } from '@/lib/ipc-client';
 import { useRouter } from 'next/navigation';
+
+const STORAGE_KEY = 'gpflow_practices';
 
 const staggerContainer = {
   hidden: {},
@@ -36,12 +36,28 @@ export default function DataPage() {
     if (ipc) {
       const data = await ipc.getPractices();
       setPractices(data);
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } else {
+      // Browser mode: restore from sessionStorage
+      const stored = sessionStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        setPractices(JSON.parse(stored));
+      }
     }
     setLoading(false);
   };
 
   const handleWebParsed = (parsed: any[]) => {
     setPractices(parsed);
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+    setLoading(false);
+  };
+
+  const handleClear = () => {
+    setPractices([]);
+    setSelectedIds([]);
+    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem('selectedPracticeIds');
   };
 
   useEffect(() => {
@@ -78,7 +94,11 @@ export default function DataPage() {
           <p className="label mt-2">Manage your practice data</p>
         </div>
         <div className="flex gap-3">
-          <CsvImporter onImported={loadPractices} onParsedWeb={handleWebParsed} />
+          {practices.length > 0 && (
+            <Button variant="ghost" onClick={handleClear} icon={<Trash2 className="w-4 h-4" />}>
+              Clear
+            </Button>
+          )}
           <button
             onClick={() => {
               sessionStorage.setItem('selectedPracticeIds', JSON.stringify(selectedIds));
@@ -112,6 +132,17 @@ export default function DataPage() {
         </motion.div>
       </motion.div>
 
+      {/* Drop Zone — compact when data is loaded */}
+      <CsvImporter onImported={loadPractices} onParsedWeb={handleWebParsed} compact={practices.length > 0} />
+
+      {/* Import folder hint (Electron only) */}
+      {importFolder && (
+        <div className="flex items-center gap-2 text-text-muted text-xs">
+          <FolderOpen className="w-3.5 h-3.5" />
+          <span>Auto-import: drop CSV files into <code className="font-mono text-text-secondary bg-bg-overlay px-1.5 py-0.5 rounded">{importFolder}</code></span>
+        </div>
+      )}
+
       {/* Table */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -125,20 +156,11 @@ export default function DataPage() {
               {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
           ) : practices.length === 0 ? (
-            <div>
-              <EmptyState
-                icon={<Database />}
-                title="No practices loaded"
-                description="Import a CSV file to get started with template management."
-                action={<CsvImporter onImported={loadPractices} onParsedWeb={handleWebParsed} />}
-              />
-              {importFolder && (
-                <div className="flex items-center gap-2 justify-center mt-2 text-text-muted text-xs">
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  <span>Or drop CSV files into <code className="font-mono text-text-secondary bg-bg-overlay px-1.5 py-0.5 rounded">{importFolder}</code></span>
-                </div>
-              )}
-            </div>
+            <EmptyState
+              icon={<Database />}
+              title="No practices loaded"
+              description="Drag and drop a CSV file above, or click the drop zone to browse."
+            />
           ) : (
             <DataTable practices={practices} onSelectionChange={setSelectedIds} />
           )}
