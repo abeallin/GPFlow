@@ -6,14 +6,16 @@ export function saveSnapshot(
   selectors: Record<string, string[]>,
   domHash: string,
 ): number {
-  db.prepare('UPDATE page_snapshots SET is_current = 0 WHERE action = ?').run(action);
-
-  const result = db.prepare(`
-    INSERT INTO page_snapshots (action, selectors, dom_hash, is_current)
-    VALUES (?, ?, ?, 1)
-  `).run(action, JSON.stringify(selectors), domHash);
-
-  return result.lastInsertRowid as number;
+  // Atomic: both operations in a single transaction
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE page_snapshots SET is_current = 0 WHERE action = ?').run(action);
+    const result = db.prepare(`
+      INSERT INTO page_snapshots (action, selectors, dom_hash, is_current)
+      VALUES (?, ?, ?, 1)
+    `).run(action, JSON.stringify(selectors), domHash);
+    return result.lastInsertRowid as number;
+  });
+  return tx();
 }
 
 export function getCurrentSnapshot(

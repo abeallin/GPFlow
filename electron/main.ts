@@ -4,7 +4,7 @@ import fs from 'fs';
 import Database from 'better-sqlite3';
 import { registerAuthHandlers } from './ipc/auth';
 import { registerDatabaseHandlers } from './ipc/database';
-import { registerAutomationHandlers } from './ipc/automation';
+import { registerAutomationHandlers, stopAllRunners } from './ipc/automation';
 import { createSchema } from '../database/schema';
 import { importCsv } from '../database/csv-import';
 import { cleanupOldScreenshots } from '../automation/screenshots';
@@ -185,6 +185,10 @@ app.whenReady().then(() => {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   createSchema(db);
+
+  // Recover orphaned runs from previous crashes
+  db.prepare(`UPDATE runs SET status = 'failed', completed_at = datetime('now') WHERE status = 'running'`).run();
+
   initLogger(app.getPath('userData'));
   cleanupOldLogs();
 
@@ -206,7 +210,9 @@ app.whenReady().then(() => {
   cleanupOldScreenshots(screenshotPath);
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
+  // Stop any active automation runners to prevent orphaned browser processes
+  await stopAllRunners();
   if (importWatcher) importWatcher.close();
   if (db) db.close();
   if (process.platform !== 'darwin') app.quit();

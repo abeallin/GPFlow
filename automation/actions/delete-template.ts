@@ -11,7 +11,8 @@ export async function deleteTemplate(
   templateName: string,
 ): Promise<DeleteTemplateResult> {
   try {
-    const rows = page.locator(`tr:has(th:text-is("${templateName}"))`);
+    // Use filter API to avoid CSS selector injection from template names with quotes
+    const rows = page.locator('tr').filter({ hasText: templateName });
     const count = await rows.count();
 
     if (count === 0) {

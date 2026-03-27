@@ -19,7 +19,8 @@ export async function createTemplate(
   template: TemplateConfig,
 ): Promise<CreateTemplateResult> {
   try {
-    const existingRow = page.locator(`tr:has(th:text-is("${template.template_name}"))`);
+    // Use filter API to avoid CSS selector injection from template names with quotes
+    const existingRow = page.locator('tr').filter({ hasText: template.template_name });
     const exists = await existingRow.count() > 0;
 
     if (exists) {
@@ -45,7 +46,14 @@ export async function createTemplate(
       .or(page.locator('button[type="submit"]'));
     await saveButton.click();
 
-    await page.waitForTimeout(2000);
+    // Verify creation: wait for redirect back to template list or success indicator
+    try {
+      await page.waitForURL(/templates\?tab/, { timeout: 10000 });
+    } catch {
+      // Fallback: check if template now appears in the list
+      const created = page.locator('tr').filter({ hasText: template.template_name });
+      await created.waitFor({ state: 'visible', timeout: 5000 });
+    }
 
     return { success: true, alreadyExists: false };
   } catch (error) {

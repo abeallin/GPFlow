@@ -38,6 +38,7 @@ export class AutomationRunner {
   private token = new CancellationToken();
   private powerSaveId: number | null = null;
   private mainWindow: BrowserWindow;
+  public currentRunId: number = 0;
   private db: Database.Database;
   private _completedCount = 0;
 
@@ -63,6 +64,7 @@ export class AutomationRunner {
     } catch { /* not in electron context */ }
 
     const runId = createRun(this.db, config.type, config.templateConfig, config.practiceIds, concurrency);
+    this.currentRunId = runId;
     const steps = getRunSteps(this.db, runId);
 
     let screenshotPath: string;
@@ -204,8 +206,13 @@ export class AutomationRunner {
   ): Promise<{ status: string; screenshotPath?: string }> {
     try {
       await this.token.race(
-        page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }),
+        page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 }),
       );
+
+      // Session expiry check — Accurx redirects to login if session is dead
+      if (page.url().includes('/login') || page.url().includes('/two-factor')) {
+        throw new Error('Session expired — Accurx redirected to login page');
+      }
 
       let success: boolean;
 

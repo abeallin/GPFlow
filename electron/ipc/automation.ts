@@ -6,6 +6,7 @@ import type { ScreenshotMode } from '../../automation/screenshots';
 
 // Map of runner key → active runner. Supports concurrent runners (one per account).
 const activeRunners = new Map<string, { runner: AutomationRunner; runId: number }>();
+const startingKeys = new Set<string>(); // Guard against double-click race
 
 export function registerAutomationHandlers(mainWindow: BrowserWindow, db: Database.Database): void {
   ipcMain.handle('automation:start', async (_event, config: {
@@ -18,9 +19,10 @@ export function registerAutomationHandlers(mainWindow: BrowserWindow, db: Databa
   }) => {
     const key = config.credentials?.username || 'default';
 
-    if (activeRunners.has(key)) {
+    if (activeRunners.has(key) || startingKeys.has(key)) {
       throw new Error(`A run is already in progress for account: ${key}`);
     }
+    startingKeys.add(key);
 
     const runner = new AutomationRunner(mainWindow, db);
 
@@ -29,6 +31,7 @@ export function registerAutomationHandlers(mainWindow: BrowserWindow, db: Databa
 
     try {
       const runId = await runner.run({
+
         type: config.type,
         templateConfig: config.templateConfig,
         practiceIds: config.practiceIds,
@@ -39,6 +42,7 @@ export function registerAutomationHandlers(mainWindow: BrowserWindow, db: Databa
       activeRunners.set(key, { runner, runId });
       return { runId };
     } finally {
+      startingKeys.delete(key);
       activeRunners.delete(key);
     }
   });
@@ -46,7 +50,8 @@ export function registerAutomationHandlers(mainWindow: BrowserWindow, db: Databa
   ipcMain.handle('automation:stop', async (_event, { runId }: { runId?: number }) => {
     if (runId) {
       for (const [, entry] of activeRunners) {
-        if (entry.runId === runId) {
+        // Check both the map entry and the runner's live runId
+        if (entry.runId === runId || entry.runner.currentRunId === runId) {
           await entry.runner.stop();
           return;
         }
@@ -73,4 +78,11 @@ export function registerAutomationHandlers(mainWindow: BrowserWindow, db: Databa
   ipcMain.handle('automation:active-runners', async () => {
     return [...activeRunners.keys()];
   });
+}
+
+/** Stop all active runners. Called on app quit to prevent orphaned browser processes. */
+export async function stopAllRunners(): Promise<void> {
+  await Promise.allSettled(
+    [...activeRunners.values()].map((e) => e.runner.stop()),
+  );
 }
