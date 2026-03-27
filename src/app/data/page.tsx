@@ -86,9 +86,19 @@ export default function DataPage() {
       const storedFiles = localStorage.getItem(FILES_KEY);
       const storedAssign = localStorage.getItem(ASSIGNMENTS_KEY);
 
-      if (storedPractices) setPractices(JSON.parse(storedPractices));
+      const practices = storedPractices ? JSON.parse(storedPractices) : [];
+      const assign = storedAssign ? JSON.parse(storedAssign) : {};
+
+      if (practices.length) setPractices(practices);
       if (storedFiles) setUploadedFiles(JSON.parse(storedFiles));
-      if (storedAssign) setAssignments(JSON.parse(storedAssign));
+      if (storedAssign) setAssignments(assign);
+
+      // Auto-select all assigned practices on restore
+      const assignedIds = practices
+        .filter((p: any) => assign[p.id])
+        .map((p: any) => p.id);
+      if (assignedIds.length > 0) setSelectedIds(assignedIds);
+
       setLoading(false);
     }
   }, []);
