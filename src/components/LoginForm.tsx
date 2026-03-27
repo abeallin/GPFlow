@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Lock, Trash2, Plus, ArrowRight } from 'lucide-react';
+import { User, Lock, Trash2, Plus, ArrowRight, KeyRound } from 'lucide-react';
 import { LogoHero } from './ui/Logo';
-import { type Account, getAccounts, addAccount, removeAccount } from '@/lib/accounts';
+import { type Account, getAccounts, addAccount, removeAccount, getPasswordAsync, savePassword, allPasswordsReady } from '@/lib/accounts';
 import { ipc } from '@/lib/ipc-client';
 
 interface LoginFormProps {
@@ -14,15 +14,20 @@ interface LoginFormProps {
 export function LoginForm({ onSuccess }: LoginFormProps) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [password, setPasswordInput] = useState('');
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(true);
+  const [passwordsReady, setPasswordsReady] = useState(false);
+  // Per-account password re-entry fields
+  const [reentryPasswords, setReentryPasswords] = useState<Record<string, string>>({});
 
-  // Load accounts from localStorage after mount to avoid hydration mismatch
   useEffect(() => {
     const saved = getAccounts();
     setAccounts(saved);
-    if (saved.length > 0) setShowForm(false);
+    if (saved.length > 0) {
+      setShowForm(false);
+      allPasswordsReady().then(setPasswordsReady);
+    }
   }, []);
 
   const handleAddAccount = async (e: React.FormEvent) => {
@@ -39,18 +44,13 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       return;
     }
 
-    const account = addAccount(username.trim(), password);
-
-    if (ipc) {
-      try {
-        await ipc.saveCredentials({ username: account.username, password, licenseKey: '' });
-      } catch {}
-    }
+    const account = await addAccount(username.trim(), password);
 
     setAccounts(getAccounts());
     setUsername('');
-    setPassword('');
+    setPasswordInput('');
     setShowForm(false);
+    allPasswordsReady().then(setPasswordsReady);
   };
 
   const handleRemove = (id: string) => {
@@ -58,7 +58,42 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     const remaining = getAccounts();
     setAccounts(remaining);
     if (remaining.length === 0) setShowForm(true);
+    allPasswordsReady().then(setPasswordsReady);
   };
+
+  const handleReentryPassword = (accountId: string, pw: string) => {
+    setReentryPasswords((prev) => ({ ...prev, [accountId]: pw }));
+  };
+
+  const handleUnlockAccount = async (accountId: string) => {
+    const account = accounts.find((a) => a.id === accountId);
+    const pw = reentryPasswords[accountId];
+    if (!pw?.trim() || !account) return;
+    await savePassword(accountId, account.username, pw.trim());
+    setReentryPasswords((prev) => {
+      const next = { ...prev };
+      delete next[accountId];
+      return next;
+    });
+    // Recheck which accounts need passwords
+    const ready = await allPasswordsReady();
+    setPasswordsReady(ready);
+    setAccountsNeedingPw((prev) => prev.filter((id) => id !== accountId));
+  };
+
+  // Track which accounts need password re-entry (checked async on mount)
+  const [accountsNeedingPw, setAccountsNeedingPw] = useState<string[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const needPw: string[] = [];
+      for (const a of getAccounts()) {
+        const pw = await getPasswordAsync(a.id);
+        if (!pw) needPw.push(a.id);
+      }
+      setAccountsNeedingPw(needPw);
+    })();
+  }, [accounts]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-bg-root relative overflow-hidden">
@@ -75,7 +110,6 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
         transition={{ duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94] }}
         className="relative z-10 w-full max-w-md"
       >
-        {/* Logo */}
         <motion.div
           initial={{ scale: 0.85, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -85,7 +119,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           <LogoHero />
         </motion.div>
 
-        {/* Account list + add button header */}
+        {/* Account list */}
         {accounts.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -114,23 +148,56 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                     initial={{ opacity: 0, x: -12 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 12, height: 0 }}
-                    className="flex items-center justify-between glass-card rounded-xl px-4 py-3"
+                    className="glass-card rounded-xl px-4 py-3"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
-                        <User className="w-4 h-4 text-accent" />
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                          accountsNeedingPw.includes(account.id) ? 'bg-warning/10' : 'bg-accent/10'
+                        }`}>
+                          {accountsNeedingPw.includes(account.id) ? (
+                            <KeyRound className="w-4 h-4 text-warning" />
+                          ) : (
+                            <User className="w-4 h-4 text-accent" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-text-primary truncate">{account.label}</p>
+                          <p className="text-xs text-text-muted truncate">{account.username}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-text-primary truncate">{account.label}</p>
-                        <p className="text-xs text-text-muted truncate">{account.username}</p>
-                      </div>
+                      <button
+                        onClick={() => handleRemove(account.id)}
+                        className="p-1.5 rounded-lg text-text-muted hover:text-error hover:bg-error/10 transition-colors shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => handleRemove(account.id)}
-                      className="p-1.5 rounded-lg text-text-muted hover:text-error hover:bg-error/10 transition-colors shrink-0"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+
+                    {/* Password re-entry for accounts missing password after restart */}
+                    {accountsNeedingPw.includes(account.id) && (
+                      <div className="mt-3 flex gap-2">
+                        <div className="relative flex-1">
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">
+                            <Lock className="w-3.5 h-3.5" />
+                          </div>
+                          <input
+                            type="password"
+                            placeholder="Enter password"
+                            value={reentryPasswords[account.id] || ''}
+                            onChange={(e) => handleReentryPassword(account.id, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleUnlockAccount(account.id); }}
+                            className="w-full pl-9 pr-3 py-2 bg-bg-input border border-border rounded-lg text-xs text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/40 transition-all duration-200"
+                          />
+                        </div>
+                        <button
+                          onClick={() => handleUnlockAccount(account.id)}
+                          className="px-3 py-2 rounded-lg text-xs font-medium bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors shrink-0"
+                        >
+                          Unlock
+                        </button>
+                      </div>
+                    )}
                   </motion.div>
                 ))}
               </AnimatePresence>
@@ -165,13 +232,9 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
               )}
               <form onSubmit={handleAddAccount} className="space-y-5">
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-text-secondary tracking-wide uppercase">
-                    Username
-                  </label>
+                  <label className="block text-xs font-medium text-text-secondary tracking-wide uppercase">Username</label>
                   <div className="relative">
-                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted">
-                      <User className="w-4 h-4" />
-                    </div>
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted"><User className="w-4 h-4" /></div>
                     <input
                       type="text"
                       value={username}
@@ -183,17 +246,13 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-text-secondary tracking-wide uppercase">
-                    Password
-                  </label>
+                  <label className="block text-xs font-medium text-text-secondary tracking-wide uppercase">Password</label>
                   <div className="relative">
-                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted">
-                      <Lock className="w-4 h-4" />
-                    </div>
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted"><Lock className="w-4 h-4" /></div>
                     <input
                       type="password"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => setPasswordInput(e.target.value)}
                       placeholder="Enter your Accurx password"
                       className="w-full pl-11 pr-4 py-3 bg-bg-input border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/40 transition-all duration-200"
                     />
@@ -227,19 +286,20 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           )}
         </AnimatePresence>
 
-        {/* Continue button */}
+        {/* Continue button — only when all accounts have passwords */}
         {accounts.length > 0 && (
           <motion.button
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => onSuccess()}
-            className="group w-full py-3.5 rounded-xl text-sm font-semibold text-text-on-accent bg-accent hover:bg-accent-hover transition-all duration-200 inline-flex items-center justify-center gap-2"
-            style={{ boxShadow: '0 0 24px rgba(16, 224, 160, 0.3), 0 4px 16px rgba(16, 224, 160, 0.2)' }}
+            onClick={() => { if (passwordsReady) onSuccess(); }}
+            disabled={!passwordsReady}
+            className="group w-full py-3.5 rounded-xl text-sm font-semibold text-text-on-accent bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 inline-flex items-center justify-center gap-2"
+            style={passwordsReady ? { boxShadow: '0 0 24px rgba(16, 224, 160, 0.3), 0 4px 16px rgba(16, 224, 160, 0.2)' } : undefined}
           >
-            Continue to Data
-            <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+            {passwordsReady ? 'Continue to Data' : 'Enter passwords to continue'}
+            {passwordsReady && <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />}
           </motion.button>
         )}
 

@@ -3,7 +3,8 @@ declare global {
     electronAPI: {
       login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
       validateLicense: (key: string) => Promise<{ valid: boolean; cached: boolean }>;
-      saveCredentials: (creds: { username: string; password: string; licenseKey: string }) => Promise<void>;
+      saveCredentials: (creds: { accountId: string; username: string; password: string; licenseKey: string }) => Promise<void>;
+      getCredentials: (accountId: string) => Promise<{ username: string; password: string; licenseKey: string } | null>;
       logout: () => Promise<void>;
       importCsv: (filePath?: string) => Promise<{ rowCount: number; errors: string[] }>;
       getPractices: (filters?: Record<string, string>, sort?: { field: string; asc: boolean }) => Promise<any[]>;

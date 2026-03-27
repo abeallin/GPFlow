@@ -5,6 +5,21 @@ import type Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 
+function getCredentialsDir(): string {
+  return path.join(app.getPath('userData'), 'credentials');
+}
+
+function ensureCredentialsDir(): void {
+  const dir = getCredentialsDir();
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+function credFilePath(accountId: string): string {
+  // Sanitize accountId for filesystem
+  const safe = accountId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  return path.join(getCredentialsDir(), `${safe}.enc`);
+}
+
 async function validateLicenseRemote(licenseKey: string): Promise<boolean> {
   const mongoUri = process.env.MONGO_URI;
   if (!mongoUri) throw new Error('MONGO_URI not configured');
@@ -22,13 +37,11 @@ async function validateLicenseRemote(licenseKey: string): Promise<boolean> {
 
 export function registerAuthHandlers(db: Database.Database): void {
   ipcMain.handle('auth:validate-license', async (_event, { key }: { key: string }) => {
-    // Try remote validation first
     try {
       const isValid = await validateLicenseRemote(key);
       setCachedLicense(db, key, isValid);
       return { valid: isValid, cached: false };
     } catch {
-      // Fallback to cache on network failure
       const cached = getCachedLicense(db, key);
       if (cached !== null) {
         return { valid: cached, cached: true };
@@ -37,14 +50,29 @@ export function registerAuthHandlers(db: Database.Database): void {
     }
   });
 
+  // Save credentials for a specific account (encrypted on OS keychain)
   ipcMain.handle('auth:save-credentials', async (_event, creds: {
+    accountId: string;
     username: string;
     password: string;
     licenseKey: string;
   }) => {
-    const encrypted = safeStorage.encryptString(JSON.stringify(creds));
-    const credPath = path.join(app.getPath('userData'), 'credentials.enc');
-    fs.writeFileSync(credPath, encrypted);
+    ensureCredentialsDir();
+    const encrypted = safeStorage.encryptString(JSON.stringify({
+      username: creds.username,
+      password: creds.password,
+      licenseKey: creds.licenseKey,
+    }));
+    fs.writeFileSync(credFilePath(creds.accountId), encrypted);
+  });
+
+  // Retrieve credentials for a specific account
+  ipcMain.handle('auth:get-credentials', async (_event, { accountId }: { accountId: string }) => {
+    const filePath = credFilePath(accountId);
+    if (!fs.existsSync(filePath)) return null;
+    const encrypted = fs.readFileSync(filePath);
+    const decrypted = safeStorage.decryptString(encrypted);
+    return JSON.parse(decrypted);
   });
 
   ipcMain.handle('auth:login', async (_event, { username, password }: {
@@ -58,20 +86,24 @@ export function registerAuthHandlers(db: Database.Database): void {
   });
 
   ipcMain.handle('auth:logout', async () => {
-    // Delete encrypted credentials
-    const credPath = path.join(app.getPath('userData'), 'credentials.enc');
-    if (fs.existsSync(credPath)) {
-      fs.unlinkSync(credPath);
+    // Delete all encrypted credential files
+    const dir = getCredentialsDir();
+    if (fs.existsSync(dir)) {
+      for (const file of fs.readdirSync(dir)) {
+        fs.unlinkSync(path.join(dir, file));
+      }
     }
 
-    // Clear practices, runs, and cached data from SQLite
+    // Also delete legacy single credentials file
+    const legacyPath = path.join(app.getPath('userData'), 'credentials.enc');
+    if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
+
+    // Clear database
     try {
       db.exec('DELETE FROM run_steps');
       db.exec('DELETE FROM runs');
       db.exec('DELETE FROM practices');
       db.exec('DELETE FROM license_cache');
-    } catch {
-      // Tables may not exist yet — that's fine
-    }
+    } catch {}
   });
 }

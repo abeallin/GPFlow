@@ -6,8 +6,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('auth:login', { username, password }),
   validateLicense: (key: string) =>
     ipcRenderer.invoke('auth:validate-license', { key }),
-  saveCredentials: (creds: { username: string; password: string; licenseKey: string }) =>
+  saveCredentials: (creds: { accountId: string; username: string; password: string; licenseKey: string }) =>
     ipcRenderer.invoke('auth:save-credentials', creds),
+  getCredentials: (accountId: string) =>
+    ipcRenderer.invoke('auth:get-credentials', { accountId }),
   logout: () =>
     ipcRenderer.invoke('auth:logout'),
 

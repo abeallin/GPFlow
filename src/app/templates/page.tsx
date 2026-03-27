@@ -8,7 +8,7 @@ import { Select } from '@/components/ui/Select';
 import { Alert } from '@/components/ui/Alert';
 import { TemplateForm } from '@/components/TemplateForm';
 import { ipc } from '@/lib/ipc-client';
-import { getAccounts, getAccountById, getPassword, type Account } from '@/lib/accounts';
+import { getAccounts, getAccountById, getPasswordAsync, type Account } from '@/lib/accounts';
 import { useRouter } from 'next/navigation';
 
 interface TemplateConfig {
@@ -122,7 +122,7 @@ export default function TemplatesPage() {
         templateConfig: config,
         practiceIds,
         screenshotMode,
-        credentials: { username: account.username, password: getPassword(account.id) || '' },
+        credentials: { username: account.username, password: (await getPasswordAsync(account.id)) || '' },
         accountLabel: account.label,
       });
     }
