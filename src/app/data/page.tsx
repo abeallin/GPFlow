@@ -63,14 +63,30 @@ export default function DataPage() {
   const [showDuplicates, setShowDuplicates] = useState(false);
   const router = useRouter();
 
-  // Load everything from sessionStorage on mount
+  // Load everything on mount
   useEffect(() => {
     setAccounts(getAccounts());
+
+    // Restore files and assignments from localStorage (shared across modes)
+    const storedFiles = localStorage.getItem(FILES_KEY);
+    const storedAssign = localStorage.getItem(ASSIGNMENTS_KEY);
+    const assign = storedAssign ? JSON.parse(storedAssign) : {};
+
+    if (storedFiles) setUploadedFiles(JSON.parse(storedFiles));
+    if (storedAssign) setAssignments(assign);
+
+    const autoSelect = (practiceList: any[]) => {
+      const assignedIds = practiceList
+        .filter((p: any) => assign[p.id])
+        .map((p: any) => p.id);
+      if (assignedIds.length > 0) setSelectedIds(assignedIds);
+    };
 
     if (ipc) {
       ipc.getPractices().then((data) => {
         setPractices(data);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        autoSelect(data);
         setLoading(false);
       });
       ipc.onPracticesUpdated?.(() => {
@@ -81,24 +97,11 @@ export default function DataPage() {
       });
       return () => { ipc?.removeAllListeners('db:practices-updated'); };
     } else {
-      // Web mode: restore from sessionStorage
+      // Web mode: restore practices from localStorage
       const storedPractices = localStorage.getItem(STORAGE_KEY);
-      const storedFiles = localStorage.getItem(FILES_KEY);
-      const storedAssign = localStorage.getItem(ASSIGNMENTS_KEY);
-
       const practices = storedPractices ? JSON.parse(storedPractices) : [];
-      const assign = storedAssign ? JSON.parse(storedAssign) : {};
-
       if (practices.length) setPractices(practices);
-      if (storedFiles) setUploadedFiles(JSON.parse(storedFiles));
-      if (storedAssign) setAssignments(assign);
-
-      // Auto-select all assigned practices on restore
-      const assignedIds = practices
-        .filter((p: any) => assign[p.id])
-        .map((p: any) => p.id);
-      if (assignedIds.length > 0) setSelectedIds(assignedIds);
-
+      autoSelect(practices);
       setLoading(false);
     }
   }, []);
