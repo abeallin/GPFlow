@@ -9,7 +9,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { LogoFull } from '@/components/ui/Logo';
 import { ipc } from '@/lib/ipc-client';
-import { clearAllAccounts } from '@/lib/accounts';
 
 const navItems = [
   { href: '/data', label: 'Data', icon: Database },
@@ -35,16 +34,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   };
 
   const handleLogout = async () => {
-    try {
-      await ipc?.logout();
-    } catch {
-      // Web mode — no IPC
-    }
-    clearAllAccounts();
+    // Clear session data but keep accounts and credentials
     localStorage.removeItem('gpflow_practices');
     localStorage.removeItem('gpflow_assignments');
     localStorage.removeItem('gpflow_uploaded_files');
-    localStorage.removeItem('sidebar_collapsed');
     sessionStorage.clear();
     router.push('/');
   };
