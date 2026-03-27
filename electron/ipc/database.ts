@@ -48,4 +48,8 @@ export function registerDatabaseHandlers(db: Database.Database): void {
   ipcMain.handle('db:get-run-steps', (_event, { runId }: { runId: number }) => {
     return getRunSteps(db, runId);
   });
+
+  ipcMain.handle('db:clear-practices', () => {
+    db.exec('DELETE FROM practices');
+  });
 }

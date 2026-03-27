@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('db:get-runs', { limit, offset }),
   getImportFolder: () =>
     ipcRenderer.invoke('db:get-import-folder'),
+  clearPractices: () =>
+    ipcRenderer.invoke('db:clear-practices'),
 
   // Automation
   startRun: (config: { templateConfig: unknown; practiceIds: number[]; screenshotMode: string }) =>

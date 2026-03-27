@@ -201,7 +201,7 @@ export default function DataPage() {
     });
   };
 
-  const handleClear = () => {
+  const handleClear = async () => {
     setPractices([]);
     setSelectedIds([]);
     setAssignments({});
@@ -210,6 +210,11 @@ export default function DataPage() {
     localStorage.removeItem(ASSIGNMENTS_KEY);
     localStorage.removeItem(FILES_KEY);
     sessionStorage.removeItem('selectedPracticeIds');
+
+    // Also clear SQLite practices table in Electron
+    if (ipc) {
+      try { await ipc.clearPractices?.(); } catch {}
+    }
   };
 
   // Find accurx_ids that appear in multiple accounts among selected practices

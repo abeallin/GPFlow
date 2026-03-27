@@ -11,6 +11,7 @@ declare global {
       saveTemplate: (template: any) => Promise<{ id: number }>;
       getRuns: (limit?: number, offset?: number) => Promise<any[]>;
       getImportFolder: () => Promise<string>;
+      clearPractices: () => Promise<void>;
       startRun: (config: any) => Promise<{ runId: number }>;
       stopRun: (runId: number) => Promise<void>;
       retryFailed: (runId: number) => Promise<{ practiceIds: number[] }>;
