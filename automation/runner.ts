@@ -173,7 +173,7 @@ export class AutomationRunner {
       return runId;
     } catch (error) {
       if (!(error instanceof CancellationError)) {
-        this.db.prepare('UPDATE runs SET status = ?, completed_at = datetime("now") WHERE id = ?')
+        this.db.prepare(`UPDATE runs SET status = ?, completed_at = datetime('now') WHERE id = ?`)
           .run('failed', runId);
       }
       if (error instanceof CancellationError) {
