@@ -43,13 +43,14 @@ export default function TemplatesPage() {
     setAccounts(getAccounts());
   }, []);
 
-  // Group selected practices by account
+  // Group selected practices by account (assignments keyed by accurx_id)
   const groupedByAccount = useMemo(() => {
     const groups: Record<string, { account: Account; practiceIds: number[] }> = {};
     const unassigned: number[] = [];
 
     for (const id of selectedIds) {
-      const accountId = assignments[id];
+      const practice = practices.find((p) => p.id === id);
+      const accountId = practice ? assignments[practice.accurx_id] : undefined;
       if (accountId) {
         if (!groups[accountId]) {
           const account = getAccountById(accountId);
@@ -61,7 +62,7 @@ export default function TemplatesPage() {
       }
     }
     return { groups, unassigned };
-  }, [selectedIds, assignments]);
+  }, [selectedIds, assignments, practices]);
 
   // Detect cross-account duplicates (same accurx_id in multiple accounts)
   const duplicates = useMemo(() => {
@@ -70,7 +71,7 @@ export default function TemplatesPage() {
     // Map accurx_id → set of account IDs
     const accurxToAccounts = new Map<string, Set<string>>();
     for (const p of selectedPractices) {
-      const accountId = assignments[p.id];
+      const accountId = assignments[p.accurx_id];
       if (!accountId) continue;
       if (!accurxToAccounts.has(p.accurx_id)) {
         accurxToAccounts.set(p.accurx_id, new Set());

@@ -16,7 +16,7 @@ interface Practice {
 interface DataTableProps {
   practices: Practice[];
   onSelectionChange: (ids: number[]) => void;
-  assignments?: Record<number, string>;
+  assignments?: Record<string, string>;
   accounts?: Account[];
 }
 
@@ -165,9 +165,9 @@ export function DataTable({ practices, onSelectionChange, assignments = {}, acco
                 </td>
                 {accounts.length > 0 && (
                   <td className="p-3 whitespace-nowrap">
-                    {assignments[practice.id] ? (
+                    {assignments[practice.accurx_id] ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-accent/10 text-accent border border-accent/20">
-                        {accountMap[assignments[practice.id]]?.label || '?'}
+                        {accountMap[assignments[practice.accurx_id]]?.label || '?'}
                       </span>
                     ) : (
                       <span className="text-xs text-text-muted">—</span>

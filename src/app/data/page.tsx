@@ -37,16 +37,16 @@ interface UploadedFile {
 function rebuildState(
   allPractices: any[],
   files: UploadedFile[],
-): { practices: any[]; assignments: Record<number, string> } {
+): { practices: any[]; assignments: Record<string, string> } {
   const fileAccountMap = new Map<string, string>();
   for (const f of files) {
     if (f.accountId) fileAccountMap.set(f.fileName, f.accountId);
   }
 
-  const assignments: Record<number, string> = {};
+  const assignments: Record<string, string> = {};
   for (const p of allPractices) {
     const accountId = fileAccountMap.get(p.source_file);
-    if (accountId) assignments[p.id] = accountId;
+    if (accountId && p.accurx_id) assignments[p.accurx_id] = accountId;
   }
 
   return { practices: allPractices, assignments };
@@ -57,7 +57,8 @@ export default function DataPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [assignments, setAssignments] = useState<Record<number, string>>({});
+  // Keyed by accurx_id (stable across ID changes) → account ID
+  const [assignments, setAssignments] = useState<Record<string, string>>({});
   const [activeAccount, setActiveAccount] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [showDuplicates, setShowDuplicates] = useState(false);
@@ -77,7 +78,7 @@ export default function DataPage() {
 
     const autoSelect = (practiceList: any[]) => {
       const assignedIds = practiceList
-        .filter((p: any) => assign[p.id])
+        .filter((p: any) => assign[p.accurx_id])
         .map((p: any) => p.id);
       if (assignedIds.length > 0) setSelectedIds(assignedIds);
     };
@@ -217,7 +218,7 @@ export default function DataPage() {
     const accurxToEntries = new Map<string, { id: number; accountId: string; name: string }[]>();
 
     for (const p of selected) {
-      const accountId = assignments[p.id];
+      const accountId = assignments[p.accurx_id];
       if (!accountId) continue;
       if (!accurxToEntries.has(p.accurx_id)) accurxToEntries.set(p.accurx_id, []);
       accurxToEntries.get(p.accurx_id)!.push({ id: p.id, accountId, name: p.name || p.accurx_id });
@@ -248,9 +249,15 @@ export default function DataPage() {
     setShowDuplicates(false);
   };
 
+  // Helper: check if a practice (by id) is assigned to an account
+  const isAssigned = (practiceId: number) => {
+    const p = practices.find((pr) => pr.id === practiceId);
+    return p ? !!assignments[p.accurx_id] : false;
+  };
+
   const handleContinue = () => {
     // Only continue with assigned practices
-    const assignedSelected = selectedIds.filter((id) => assignments[id]);
+    const assignedSelected = selectedIds.filter((id) => isAssigned(id));
 
     if (assignedSelected.length === 0) return;
 
@@ -265,7 +272,7 @@ export default function DataPage() {
   };
 
   const forceContinue = () => {
-    const assignedSelected = selectedIds.filter((id) => assignments[id]);
+    const assignedSelected = selectedIds.filter((id) => isAssigned(id));
     sessionStorage.setItem('selectedPracticeIds', JSON.stringify(assignedSelected));
     localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assignments));
     router.push('/templates');
@@ -276,7 +283,7 @@ export default function DataPage() {
     Object.values(assignments).filter((id) => id === accountId).length;
   const hasData = practices.length > 0;
   const duplicates = showDuplicates ? getDuplicates() : [];
-  const assignedSelectedCount = selectedIds.filter((id) => assignments[id]).length;
+  const assignedSelectedCount = selectedIds.filter((id) => isAssigned(id)).length;
   const unassignedSelectedCount = selectedIds.length - assignedSelectedCount;
 
   return (
@@ -507,7 +514,7 @@ export default function DataPage() {
             <DataTable
               practices={
                 activeAccount
-                  ? practices.filter((p) => assignments[p.id] === activeAccount)
+                  ? practices.filter((p) => assignments[p.accurx_id] === activeAccount)
                   : practices
               }
               onSelectionChange={setSelectedIds}
