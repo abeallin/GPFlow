@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef } from 'react';
 import { Upload, FileSpreadsheet, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Badge } from './ui/Badge';
@@ -64,22 +64,11 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const processFile = useCallback((file: File) => {
-    setLoading(true);
-    setResult(null);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      const { practices, errors } = parseCsvText(text, file.name);
-      setResult({ rowCount: practices.length, errors });
-      setLoading(false);
-      if (practices.length > 0) {
-        onParsedWeb?.(practices);
-        onImported();
-      }
-    };
-    reader.readAsText(file);
-  }, [onImported, onParsedWeb]);
+  // Use refs to always have the latest callbacks (avoids stale closures)
+  const onParsedWebRef = useRef(onParsedWeb);
+  const onImportedRef = useRef(onImported);
+  onParsedWebRef.current = onParsedWeb;
+  onImportedRef.current = onImported;
 
   const handleElectronImport = async () => {
     if (!ipc) return;
@@ -87,10 +76,10 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
     const res = await ipc.importCsv();
     setResult(res);
     setLoading(false);
-    if (res.rowCount > 0) onImported();
+    if (res.rowCount > 0) onImportedRef.current();
   };
 
-  const processMultipleFiles = useCallback((files: File[]) => {
+  const processFiles = (files: File[]) => {
     const csvFiles = files.filter((f) => f.name.toLowerCase().endsWith('.csv'));
     if (csvFiles.length === 0) {
       setResult({ rowCount: 0, errors: ['Please select .csv files'] });
@@ -115,53 +104,47 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
         allPractices.push(...practices);
         processed++;
 
-        // Only fire callback once all files are read
         if (processed === csvFiles.length) {
           setResult({ rowCount: totalRows, errors: allErrors });
           setLoading(false);
           if (allPractices.length > 0) {
-            onParsedWeb?.(allPractices);
-            onImported();
+            onParsedWebRef.current?.(allPractices);
+            onImportedRef.current();
           }
         }
       };
       reader.readAsText(file);
     }
-  }, [onImported, onParsedWeb]);
+  };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    if (ipc) {
-      handleElectronImport();
-    } else {
-      processMultipleFiles([...files]);
-    }
+    // Always process selected files directly — works in both web and Electron
+    processFiles([...files]);
     e.target.value = '';
   };
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragging(false);
-
     const files = [...e.dataTransfer.files];
     if (files.length === 0) return;
+    processFiles(files);
+  };
 
-    processMultipleFiles(files);
-  }, [processMultipleFiles]);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragging(true);
-  }, []);
+  };
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
+  const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragging(false);
-  }, []);
+  };
 
   const hasResult = result && result.rowCount > 0;
 
@@ -235,9 +218,9 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
               </div>
               <div>
                 <p className="text-sm font-medium text-text-primary">
-                  {dragging ? 'Drop your CSV here' : compact ? 'Drop CSV or click to replace' : 'Drop CSV file or click to browse'}
+                  {dragging ? 'Drop your CSV here' : compact ? 'Drop CSV or click to replace' : 'Drop CSV files or click to browse'}
                 </p>
-                {!compact && <p className="text-xs text-text-muted mt-0.5">Supports .csv files with an accurx_id column</p>}
+                {!compact && <p className="text-xs text-text-muted mt-0.5">Supports multiple .csv files with an accurx_id column</p>}
               </div>
             </motion.div>
           )}

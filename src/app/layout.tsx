@@ -20,10 +20,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [isElectron, setIsElectron] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebar_collapsed');
     if (saved === 'true') setCollapsed(true);
+    setIsElectron(!!window.electronAPI);
   }, []);
 
   const toggleCollapsed = (value: boolean) => {
@@ -72,7 +74,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   transition={{ duration: 0.15 }}
                   className="pl-2"
                 >
-                  <LogoFull size="md" showSubtitle subtitleText={typeof window !== 'undefined' && window.electronAPI ? 'Desktop' : 'Web'} />
+                  <LogoFull size="md" showSubtitle subtitleText={isElectron ? 'Desktop' : 'Web'} />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -152,7 +154,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Main content — click to collapse sidebar */}
         <main
           className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-bg-base relative noise-overlay"
-          onClick={() => { if (!collapsed) toggleCollapsed(true); }}
+          onClick={(e) => {
+            // Only collapse if clicking the main background itself, not child elements
+            if (e.target === e.currentTarget && !collapsed) toggleCollapsed(true);
+          }}
         >
           {/* Titlebar drag region for main area */}
           <div className="h-9 drag-region shrink-0 bg-bg-base sticky top-0 z-50" />

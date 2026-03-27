@@ -28,6 +28,7 @@ export interface RunConfig {
   screenshotMode: ScreenshotMode;
   credentials: { username: string; password: string };
   concurrency?: number;
+  accountLabel?: string;
 }
 
 export class AutomationRunner {
@@ -133,6 +134,7 @@ export class AutomationRunner {
             status: result.status,
             screenshotPath: result.screenshotPath,
             workerIndex,
+            accountLabel: config.accountLabel || config.credentials.username,
             timestamp: new Date().toISOString(),
           });
         },
@@ -159,6 +161,7 @@ export class AutomationRunner {
       const finalRun = this.db.prepare('SELECT * FROM runs WHERE id = ?').get(runId) as any;
       this.mainWindow.webContents.send('automation:complete', {
         runId,
+        accountLabel: config.accountLabel || config.credentials.username,
         summary: {
           totalCount: finalRun.total_count,
           successCount: finalRun.success_count,

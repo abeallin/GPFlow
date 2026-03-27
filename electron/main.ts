@@ -124,9 +124,12 @@ function createWindow() {
     },
   });
 
-  if (process.env.NODE_ENV === 'development') {
+  const isDev = process.env.NODE_ENV === 'development' || !require('fs').existsSync(path.join(__dirname, '../out/index.html'));
+
+  if (isDev) {
     mainWindow.loadURL('http://localhost:3000');
-    mainWindow.webContents.openDevTools();
+    // DevTools: uncomment the line below to debug
+    // mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadURL(`${SCHEME}://app/`);
   }

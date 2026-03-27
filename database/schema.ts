@@ -28,7 +28,7 @@ export function createSchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS run_steps (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-      practice_id INTEGER NOT NULL REFERENCES practices(id),
+      practice_id INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'success', 'failed', 'skipped', 'cancelled')),
       error_message TEXT,
@@ -68,4 +68,42 @@ export function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_run_steps_run_id ON run_steps(run_id);
     CREATE INDEX IF NOT EXISTS idx_practices_accurx_id ON practices(accurx_id);
   `);
+
+  // Migrations for existing databases
+  const columns = (table: string) => {
+    const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    return new Set(rows.map((r) => r.name));
+  };
+
+  if (!columns('runs').has('concurrency')) {
+    db.exec('ALTER TABLE runs ADD COLUMN concurrency INTEGER NOT NULL DEFAULT 1');
+  }
+  if (!columns('run_steps').has('worker_index')) {
+    db.exec('ALTER TABLE run_steps ADD COLUMN worker_index INTEGER');
+  }
+
+  // Remove FK constraint on run_steps.practice_id (practices may come from localStorage)
+  const fks = db.prepare('PRAGMA foreign_key_list(run_steps)').all() as { table: string }[];
+  if (fks.some((fk) => fk.table === 'practices')) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS run_steps_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+        practice_id INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'success', 'failed', 'skipped', 'cancelled')),
+        error_message TEXT,
+        screenshot_path TEXT,
+        dom_snapshot TEXT,
+        completed_at TEXT,
+        worker_index INTEGER
+      );
+      INSERT INTO run_steps_new SELECT id, run_id, practice_id, status, error_message, screenshot_path, dom_snapshot, completed_at, worker_index FROM run_steps;
+      DROP TABLE run_steps;
+      ALTER TABLE run_steps_new RENAME TO run_steps;
+      CREATE INDEX IF NOT EXISTS idx_run_steps_run_id ON run_steps(run_id);
+    `);
+    db.exec('PRAGMA foreign_keys = ON');
+  }
 }

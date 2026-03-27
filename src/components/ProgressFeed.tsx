@@ -14,6 +14,7 @@ interface ProgressEvent {
   practice: string;
   status: 'success' | 'failed' | 'skipped';
   screenshotPath?: string;
+  accountLabel?: string;
   timestamp: string;
 }
 
@@ -62,9 +63,14 @@ export function ProgressFeed({ events, total }: ProgressFeedProps) {
                 transition={{ duration: 0.25, ease: 'easeOut' }}
                 className={`flex items-center justify-between p-3 rounded-lg border-l-4 ${border} ${bg} backdrop-blur-sm text-sm`}
               >
-                <div className="flex items-center gap-3">
-                  <Icon className={`w-4 h-4 ${color}`} />
-                  <span className="font-medium text-text-primary">{event.practice}</span>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Icon className={`w-4 h-4 ${color} shrink-0`} />
+                  {event.accountLabel && (
+                    <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/10 text-accent border border-accent/20">
+                      {event.accountLabel}
+                    </span>
+                  )}
+                  <span className="font-medium text-text-primary truncate">{event.practice}</span>
                 </div>
                 <div className="flex items-center gap-3 text-text-muted text-xs">
                   <span className="tabular-nums">{event.step}/{event.total}</span>

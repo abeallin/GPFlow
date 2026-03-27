@@ -26,10 +26,11 @@ export default function TemplatesPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [screenshotMode, setScreenshotMode] = useState<string>('on-failure');
   const [webError, setWebError] = useState<string | null>(null);
+  const [isElectron, setIsElectron] = useState(false);
   const router = useRouter();
-  const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
   useEffect(() => {
+    setIsElectron(!!window.electronAPI);
     const stored = sessionStorage.getItem('selectedPracticeIds');
     if (stored) setSelectedIds(JSON.parse(stored));
 
@@ -113,7 +114,7 @@ export default function TemplatesPage() {
       return;
     }
 
-    // Start one run per account
+    // Start one run per account — each gets its own browser context
     for (const { account, practiceIds } of accountEntries) {
       await ipc.startRun({
         type,
@@ -121,6 +122,7 @@ export default function TemplatesPage() {
         practiceIds,
         screenshotMode,
         credentials: { username: account.username, password: account.password },
+        accountLabel: account.label,
       });
     }
     router.push('/runs');
