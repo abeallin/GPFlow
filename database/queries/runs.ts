@@ -57,7 +57,8 @@ export function completeRun(db: Database.Database, runId: number): void {
     FROM run_steps WHERE run_id = ?
   `).get(runId) as { success_count: number; fail_count: number };
 
-  const status = counts.fail_count > 0 ? 'failed' : 'completed';
+  // "completed" if any succeeded, "failed" only if ALL failed, "cancelled" if none ran
+  const status = counts.success_count > 0 ? 'completed' : counts.fail_count > 0 ? 'failed' : 'cancelled';
 
   db.prepare(`
     UPDATE runs SET

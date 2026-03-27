@@ -5,6 +5,7 @@ import { Upload, FileSpreadsheet, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Badge } from './ui/Badge';
 import { ipc } from '@/lib/ipc-client';
+import { parseCsvLine } from '@/lib/csv-parser';
 
 interface CsvImporterProps {
   onImported: () => void;
@@ -20,7 +21,7 @@ function parseCsvText(text: string, fileName: string): { practices: any[]; error
     return { practices: [], errors: ['CSV file is empty or has no data rows'] };
   }
 
-  const rawHeader = lines[0].replace(/^\uFEFF/, '').split(',').map((h) => h.trim());
+  const rawHeader = parseCsvLine(lines[0].replace(/^\uFEFF/, ''));
   const header = rawHeader.map((h) => h.toLowerCase().replace(/\s+/g, '_'));
 
   const accurxIdx = header.indexOf('accurx_id');
@@ -34,7 +35,7 @@ function parseCsvText(text: string, fileName: string): { practices: any[]; error
 
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
-    const values = lines[i].split(',').map((v) => v.trim());
+    const values = parseCsvLine(lines[i]);
     const row: Record<string, string> = {};
 
     for (let j = 0; j < header.length; j++) {
@@ -73,10 +74,15 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
   const handleElectronImport = async () => {
     if (!ipc) return;
     setLoading(true);
-    const res = await ipc.importCsv();
-    setResult(res);
-    setLoading(false);
-    if (res.rowCount > 0) onImportedRef.current();
+    try {
+      const res = await ipc.importCsv();
+      setResult(res);
+      if (res.rowCount > 0) onImportedRef.current();
+    } catch (err) {
+      setResult({ rowCount: 0, errors: [err instanceof Error ? err.message : 'Import failed'] });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const processFiles = (files: File[]) => {

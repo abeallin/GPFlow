@@ -93,12 +93,13 @@ function startImportWatcher() {
   // Import any existing files on startup
   autoImportCsvFiles();
 
-  // Watch for new files
+  // Watch for new files (debounced to prevent duplicate events)
   const importDir = getImportDir();
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   importWatcher = fs.watch(importDir, (eventType, filename) => {
     if (filename && filename.toLowerCase().endsWith('.csv')) {
-      // Small delay to ensure file write is complete
-      setTimeout(() => autoImportCsvFiles(), 500);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => autoImportCsvFiles(), 500);
     }
   });
 }

@@ -7,6 +7,46 @@ interface CsvImportResult {
   errors: string[];
 }
 
+/** RFC 4180-aware CSV line parser */
+function parseCsvLine(line: string): string[] {
+  const fields: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  let i = 0;
+
+  while (i < line.length) {
+    const char = line[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (i + 1 < line.length && line[i + 1] === '"') {
+          current += '"';
+          i += 2;
+        } else {
+          inQuotes = false;
+          i++;
+        }
+      } else {
+        current += char;
+        i++;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+        i++;
+      } else if (char === ',') {
+        fields.push(current.trim());
+        current = '';
+        i++;
+      } else {
+        current += char;
+        i++;
+      }
+    }
+  }
+  fields.push(current.trim());
+  return fields;
+}
+
 export function importCsv(db: Database.Database, filePath: string): CsvImportResult {
   const errors: string[] = [];
 
@@ -17,21 +57,20 @@ export function importCsv(db: Database.Database, filePath: string): CsvImportRes
     return { rowCount: 0, errors: ['CSV file is empty or has no data rows'] };
   }
 
-  const rawHeader = lines[0].replace(/^\uFEFF/, '').split(',').map((h) => h.trim());
-  // Normalize headers to lowercase with underscores for consistent access
+  const rawHeader = parseCsvLine(lines[0].replace(/^\uFEFF/, ''));
   const header = rawHeader.map((h) => h.toLowerCase().replace(/\s+/g, '_'));
 
   if (!header.includes('accurx_id')) {
     return { rowCount: 0, errors: ['CSV must contain an "accurx_id" or "Accurx_Id" column'] };
   }
 
-  // Find name column (could be "name", "practice_name", "name_on_accurx", etc.)
   const nameIdx = header.findIndex((h) => h === 'name' || h === 'practice_name' || h === 'name_on_accurx');
 
   const rows: Record<string, string>[] = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(',').map((v) => v.trim());
+    if (!lines[i].trim()) continue;
+    const values = parseCsvLine(lines[i]);
     const row: Record<string, string> = {};
 
     for (let j = 0; j < header.length; j++) {
@@ -43,7 +82,6 @@ export function importCsv(db: Database.Database, filePath: string): CsvImportRes
       continue;
     }
 
-    // Use the best name column available
     if (nameIdx !== -1 && !row.name) {
       row.name = values[nameIdx] || '';
     }

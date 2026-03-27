@@ -43,7 +43,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
 
     if (ipc) {
       try {
-        await ipc.saveCredentials({ username: account.username, password: account.password, licenseKey: '' });
+        await ipc.saveCredentials({ username: account.username, password, licenseKey: '' });
       } catch {}
     }
 

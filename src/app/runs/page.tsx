@@ -78,7 +78,10 @@ export default function RunsPage() {
             <Alert variant="warning" title="Two-Factor Authentication Required">
               <div className="flex items-center justify-between">
                 <span>Complete 2FA in the browser window to continue.</span>
-                <Button size="sm" onClick={() => ipc?.continuePast2fa(0)}>Continue</Button>
+                <Button size="sm" onClick={() => {
+                  const runId = events.length > 0 ? events[events.length - 1].runId : 0;
+                  ipc?.continuePast2fa(runId);
+                }}>Continue</Button>
               </div>
             </Alert>
           </motion.div>

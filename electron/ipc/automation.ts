@@ -24,6 +24,9 @@ export function registerAutomationHandlers(mainWindow: BrowserWindow, db: Databa
 
     const runner = new AutomationRunner(mainWindow, db);
 
+    // Register BEFORE await so automation:stop can find the runner during execution
+    activeRunners.set(key, { runner, runId: 0 });
+
     try {
       const runId = await runner.run({
         type: config.type,
@@ -40,15 +43,16 @@ export function registerAutomationHandlers(mainWindow: BrowserWindow, db: Databa
     }
   });
 
-  ipcMain.handle('automation:stop', async (_event, { runId }: { runId: number }) => {
-    // Find runner by runId
-    for (const [key, entry] of activeRunners) {
-      if (entry.runId === runId) {
-        await entry.runner.stop();
-        return;
+  ipcMain.handle('automation:stop', async (_event, { runId }: { runId?: number }) => {
+    if (runId) {
+      for (const [, entry] of activeRunners) {
+        if (entry.runId === runId) {
+          await entry.runner.stop();
+          return;
+        }
       }
     }
-    // Stop all if no specific runId match
+    // Stop all runners
     await Promise.allSettled(
       [...activeRunners.values()].map((e) => e.runner.stop()),
     );

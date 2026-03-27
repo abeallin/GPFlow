@@ -89,6 +89,8 @@ export default function DataPage() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         autoSelect(data);
         setLoading(false);
+      }).catch(() => {
+        setLoading(false);
       });
       ipc.onPracticesUpdated?.(() => {
         ipc!.getPractices().then((data) => {
@@ -522,6 +524,7 @@ export default function DataPage() {
                   ? practices.filter((p) => assignments[p.accurx_id] === activeAccount)
                   : practices
               }
+              selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
               assignments={assignments}
               accounts={accounts}

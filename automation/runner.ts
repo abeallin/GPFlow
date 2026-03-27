@@ -219,6 +219,10 @@ export class AutomationRunner {
       } else {
         const result = await this.token.race(deleteTemplate(page, config.templateConfig.template_name));
         success = result.success;
+        if (!success && result.deletedCount === 0) {
+          updateRunStep(this.db, stepId, 'skipped', 'Template not found', undefined, undefined, workerIndex);
+          return { status: 'skipped' };
+        }
       }
 
       if (success) {

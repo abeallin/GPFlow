@@ -45,6 +45,6 @@ describe('Run Flow Integration', () => {
     const runs = getRuns(db);
     expect(runs[0].success_count).toBe(1);
     expect(runs[0].fail_count).toBe(1);
-    expect(runs[0].status).toBe('failed');
+    expect(runs[0].status).toBe('completed'); // completed because at least 1 succeeded
   });
 });

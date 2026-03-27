@@ -92,7 +92,7 @@ describe('Runs Queries', () => {
     expect(runs[0].completed_at).toBeTruthy();
   });
 
-  it('completeRun marks run as failed when any step fails', () => {
+  it('completeRun marks run as completed when at least one step succeeds', () => {
     const runId = createRun(db, 'create', { template_name: 'T1' }, [1, 2]);
     const steps = getRunSteps(db, runId);
 
@@ -102,8 +102,22 @@ describe('Runs Queries', () => {
     completeRun(db, runId);
 
     const runs = getRuns(db);
-    expect(runs[0].status).toBe('failed');
+    expect(runs[0].status).toBe('completed');
     expect(runs[0].fail_count).toBe(1);
+  });
+
+  it('completeRun marks run as failed when ALL steps fail', () => {
+    const runId = createRun(db, 'create', { template_name: 'T1' }, [1, 2]);
+    const steps = getRunSteps(db, runId);
+
+    updateRunStep(db, steps[0].id, 'failed', 'timeout');
+    updateRunStep(db, steps[1].id, 'failed', 'error');
+
+    completeRun(db, runId);
+
+    const runs = getRuns(db);
+    expect(runs[0].status).toBe('failed');
+    expect(runs[0].fail_count).toBe(2);
   });
 
   it('getRuns returns runs ordered by started_at DESC with limit/offset', () => {

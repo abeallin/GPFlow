@@ -15,6 +15,7 @@ interface Practice {
 
 interface DataTableProps {
   practices: Practice[];
+  selectedIds?: number[];
   onSelectionChange: (ids: number[]) => void;
   assignments?: Record<string, string>;
   accounts?: Account[];
@@ -31,13 +32,20 @@ function formatHeader(key: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function DataTable({ practices, onSelectionChange, assignments = {}, accounts = [] }: DataTableProps) {
+export function DataTable({ practices, selectedIds: externalSelectedIds, onSelectionChange, assignments = {}, accounts = [] }: DataTableProps) {
   const accountMap = useMemo(() => {
     const map: Record<string, Account> = {};
     for (const a of accounts) map[a.id] = a;
     return map;
   }, [accounts]);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  // Use external selection if provided, otherwise internal state
+  const [internalSelectedIds, setInternalSelectedIds] = useState<Set<number>>(new Set());
+  const selectedIds = externalSelectedIds ? new Set(externalSelectedIds) : internalSelectedIds;
+  const setSelectedIds = (ids: Set<number>) => {
+    if (!externalSelectedIds) setInternalSelectedIds(ids);
+    onSelectionChange([...ids]);
+  };
   const [sortField, setSortField] = useState<string>('name');
   const [sortAsc, setSortAsc] = useState(true);
   const [filter, setFilter] = useState('');

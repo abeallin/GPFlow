@@ -8,7 +8,7 @@ import { Select } from '@/components/ui/Select';
 import { Alert } from '@/components/ui/Alert';
 import { TemplateForm } from '@/components/TemplateForm';
 import { ipc } from '@/lib/ipc-client';
-import { getAccounts, getAccountById, type Account } from '@/lib/accounts';
+import { getAccounts, getAccountById, getPassword, type Account } from '@/lib/accounts';
 import { useRouter } from 'next/navigation';
 
 interface TemplateConfig {
@@ -21,7 +21,7 @@ interface TemplateConfig {
 
 export default function TemplatesPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [assignments, setAssignments] = useState<Record<number, string>>({});
+  const [assignments, setAssignments] = useState<Record<string, string>>({});
   const [practices, setPractices] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [screenshotMode, setScreenshotMode] = useState<string>('on-failure');
@@ -122,7 +122,7 @@ export default function TemplatesPage() {
         templateConfig: config,
         practiceIds,
         screenshotMode,
-        credentials: { username: account.username, password: account.password },
+        credentials: { username: account.username, password: getPassword(account.id) || '' },
         accountLabel: account.label,
       });
     }
