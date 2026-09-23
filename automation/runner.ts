@@ -6,7 +6,7 @@ import { deleteTemplate, type DeleteTemplateResult } from './actions/delete-temp
 import { captureScreenshot, type ScreenshotMode } from './screenshots';
 import { hashDom } from './change-detection';
 import {
-  createRun, updateRunStep, completeRun, getRunSteps, finalisePendingSteps, type RunPractice, type RunStep,
+  createRun, updateRunStep, completeRun, getRunSteps, finalisePendingSteps, type RunPractice, type RunStep, type RunRow,
 } from '../database/queries/runs';
 import { saveSnapshot, getCurrentSnapshot } from '../database/queries/snapshots';
 import { CancellationToken, CancellationError } from './cancellation-token';
@@ -52,19 +52,12 @@ export class RunAbortedError extends Error {
   }
 }
 
+/**
+ * Defaults for running outside Electron (tests, scripts). The Electron main process passes
+ * its own `powerSaveBlocker` and `screenshotDir` (see electron/ipc/automation.ts) rather than
+ * this module reaching for the `electron` API itself.
+ */
 function defaultDeps(): RunnerDeps {
-  let powerSaveBlocker: RunnerDeps['powerSaveBlocker'] = null;
-  let screenshotDir = path.join(process.cwd(), 'screenshots');
-  try {
-    // Only available inside the Electron main process.
-    const electron = require('electron');
-    powerSaveBlocker = {
-      start: () => electron.powerSaveBlocker.start('prevent-display-sleep'),
-      stop: (id: number) => electron.powerSaveBlocker.stop(id),
-    };
-    screenshotDir = path.join(electron.app.getPath('userData'), 'screenshots');
-  } catch { /* not in electron */ }
-
   return {
     launchBrowser: () => chromium.launch({ headless: false }),
     login: loginToAccurx,
@@ -72,8 +65,8 @@ function defaultDeps(): RunnerDeps {
     createTemplate,
     deleteTemplate,
     captureScreenshot,
-    powerSaveBlocker,
-    screenshotDir,
+    powerSaveBlocker: null,
+    screenshotDir: path.join(process.cwd(), 'screenshots'),
     retryDelayMs: 3000,
     maxConsecutiveFailures: 5,
   };
@@ -141,7 +134,7 @@ export class AutomationRunner {
     this.changeChecked = false;
 
     const concurrency = Math.max(1, Math.min(config.concurrency ?? 4, 15));
-    const runId = createRun(this.db, config.type, config.templateConfig as any, config.practices, concurrency);
+    const runId = createRun(this.db, config.type, { ...config.templateConfig }, config.practices, concurrency);
     this.currentRunId = runId;
 
     const completion = this.execute(config, runId, concurrency);
@@ -234,7 +227,7 @@ export class AutomationRunner {
   }
 
   private sendComplete(runId: number, accountLabel: string): void {
-    const finalRun = this.db.prepare('SELECT * FROM runs WHERE id = ?').get(runId) as any;
+    const finalRun = this.db.prepare('SELECT * FROM runs WHERE id = ?').get(runId) as RunRow;
     this.sink.send('automation:complete', {
       runId,
       accountLabel,
@@ -243,7 +236,7 @@ export class AutomationRunner {
         totalCount: finalRun.total_count,
         successCount: finalRun.success_count,
         failCount: finalRun.fail_count,
-        duration: new Date(finalRun.completed_at).getTime() - new Date(finalRun.started_at).getTime(),
+        duration: new Date(finalRun.completed_at ?? Date.now()).getTime() - new Date(finalRun.started_at).getTime(),
       },
     });
   }

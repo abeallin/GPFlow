@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createAutomationController, type RunnerFactory, type RunnerLike } from '../../electron/ipc/automation-controller';
+import type { RunConfig } from '../../automation/runner';
 
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -10,11 +11,11 @@ function deferred<T>() {
 
 function fakeRunner(runId: number) {
   const done = deferred<number>();
-  const runner: RunnerLike & { done: typeof done; launchedWith: any } = {
+  const runner: RunnerLike & { done: typeof done; launchedWith: RunConfig | null } = {
     currentRunId: 0,
     launchedWith: null,
     done,
-    launch: vi.fn((config: any) => { runner.launchedWith = config; runner.currentRunId = runId; return { runId, completion: done.promise }; }),
+    launch: vi.fn((config: RunConfig) => { runner.launchedWith = config; runner.currentRunId = runId; return { runId, completion: done.promise }; }),
     stop: vi.fn(async () => {}),
   };
   return runner;
@@ -30,7 +31,7 @@ const config = (username: string) => ({
 });
 
 describe('automation controller', () => {
-  let sent: { channel: string; payload: any }[];
+  let sent: { channel: string; payload: unknown }[];
   let runners: ReturnType<typeof fakeRunner>[];
   let nextId: number;
   let controller: ReturnType<typeof createAutomationController>;
@@ -105,9 +106,9 @@ describe('automation controller', () => {
   });
 
   it('rejects invalid input before creating a runner', async () => {
-    await expect(controller.start({ ...config('a@x.com'), practices: [] } as any)).rejects.toThrow(/practice/i);
-    await expect(controller.start({ ...config('a@x.com'), type: 'nuke' } as any)).rejects.toThrow(/type/i);
-    await expect(controller.start(null as any)).rejects.toThrow();
+    await expect(controller.start({ ...config('a@x.com'), practices: [] } as unknown as RunConfig)).rejects.toThrow(/practice/i);
+    await expect(controller.start({ ...config('a@x.com'), type: 'nuke' } as unknown as RunConfig)).rejects.toThrow(/type/i);
+    await expect(controller.start(null as unknown as RunConfig)).rejects.toThrow();
     expect(runners).toHaveLength(0);
   });
 

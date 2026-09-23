@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { FileText, RotateCw } from 'lucide-react';
-import { Card } from './ui/Card';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { EmptyState } from './ui/EmptyState';
+import { LoadError } from './ui/LoadError';
 import { Skeleton } from './ui/Skeleton';
 import { Alert } from './ui/Alert';
 import { ipc } from '@/lib/ipc-client';
@@ -20,105 +20,116 @@ interface Run {
   status: string;
 }
 
+// Status → word + tone. Only failure gets an urgent colour (docs/ui-rules.md §2).
+const STATUS: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'error' }> = {
+  completed: { label: 'Completed', variant: 'success' },
+  failed: { label: 'Failed', variant: 'error' },
+  running: { label: 'Running', variant: 'warning' },
+  cancelled: { label: 'Cancelled', variant: 'default' },
+};
+
 export function RunHistory() {
-  const [runs, setRuns] = useState<Run[]>([]);
+  // null = unknown (not loaded or failed); [] = genuinely none.
+  const [runs, setRuns] = useState<Run[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<number | null>(null);
   const router = useRouter();
 
-  const loadRuns = async () => {
+  const loadRuns = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    setLoadError(null);
     try {
       if (ipc) {
         const data = await ipc.getRuns(50, 0);
         setRuns(Array.isArray(data) ? data : []);
+      } else {
+        setRuns([]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load run history');
+      setLoadError(err instanceof Error ? err.message : 'Failed to load run history');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const handleRetry = async (runId: number) => {
     if (!ipc) return;
-    setError(null);
+    setActionError(null);
     setRetryingId(runId);
     try {
       const { practiceIds } = await ipc.retryFailed(runId);
       sessionStorage.setItem('selectedPracticeIds', JSON.stringify(practiceIds));
       router.push('/templates');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to prepare retry');
+      setActionError(err instanceof Error ? err.message : 'Failed to prepare retry');
     } finally {
       setRetryingId(null);
     }
   };
 
-  useEffect(() => { loadRuns(); }, []);
-
-  const statusVariant = (status: string) => {
-    switch (status) {
-      case 'completed': return 'success' as const;
-      case 'failed': return 'error' as const;
-      case 'running': return 'warning' as const;
-      default: return 'default' as const;
-    }
-  };
+  useEffect(() => { void loadRuns(); }, [loadRuns]);
 
   if (loading) {
     return (
-      <div className="space-y-3">
-        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl bg-bg-raised" />)}
+      <div className="space-y-3" aria-busy="true">
+        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}
       </div>
     );
   }
 
+  if (loadError || runs === null) {
+    return <LoadError title="Couldn't load run history" message={`${loadError ?? 'Unknown error.'} Nothing has changed.`} onRetry={() => { void loadRuns(); }} />;
+  }
+
   if (runs.length === 0) {
     return (
-      <div className="space-y-3">
-        {error && <Alert variant="error" title="Run history unavailable" onDismiss={() => setError(null)}>{error}</Alert>}
-        <EmptyState
-          icon={<FileText />}
-          title="No runs yet"
-          description="Start a template operation to see your run history here."
-        />
-      </div>
+      <EmptyState
+        icon={<FileText />}
+        title="No runs yet"
+        description="Each bulk create or delete you start from the Templates page will be listed here with its outcome."
+      />
     );
   }
 
   return (
     <div className="space-y-3">
-      {error && <Alert variant="error" title="Something went wrong" onDismiss={() => setError(null)}>{error}</Alert>}
-      {runs.map((run) => (
-        <Card key={run.id} variant="elevated" className="p-4 bg-bg-raised border border-border-subtle hover:border-border transition-colors duration-200">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-sm text-text-primary">Run #{run.id}</span>
-                <Badge variant={statusVariant(run.status)} dot>{run.status}</Badge>
-                <Badge>{run.type}</Badge>
+      {actionError && <Alert variant="error" title="Could not prepare retry" onDismiss={() => setActionError(null)}>{actionError}</Alert>}
+      <ul className="space-y-3 list-none m-0 p-0">
+        {runs.map((run) => {
+          const status = STATUS[run.status] ?? { label: run.status, variant: 'default' as const };
+          return (
+            <li key={run.id} className="rounded-xl border border-border bg-bg-raised p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-sm text-text-primary">Run #{run.id}</span>
+                    <Badge variant={status.variant}>{status.label}</Badge>
+                    <Badge>{run.type === 'delete' ? 'Delete' : 'Create'}</Badge>
+                  </div>
+                  <p className="text-xs text-text-secondary tabular-nums">
+                    {new Date(run.started_at).toLocaleString('en-GB')} · {run.success_count} succeeded, {run.fail_count} failed
+                  </p>
+                </div>
+                {run.fail_count > 0 && run.status !== 'running' && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={<RotateCw className="w-3.5 h-3.5" aria-hidden="true" />}
+                    pending={retryingId === run.id}
+                    pendingLabel="Preparing…"
+                    onClick={() => handleRetry(run.id)}
+                    aria-label={`Retry failed practices from run ${run.id}`}
+                  >
+                    Retry
+                  </Button>
+                )}
               </div>
-              <p className="text-xs text-text-muted">
-                {new Date(run.started_at).toLocaleString()} — {run.success_count} ok, {run.fail_count} failed
-              </p>
-            </div>
-            {run.fail_count > 0 && run.status !== 'running' && (
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<RotateCw className="w-3.5 h-3.5" />}
-                loading={retryingId === run.id}
-                onClick={() => handleRetry(run.id)}
-              >
-                Retry
-              </Button>
-            )}
-          </div>
-        </Card>
-      ))}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

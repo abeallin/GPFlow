@@ -1,5 +1,6 @@
-import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import { app, ipcMain, powerSaveBlocker, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import type Database from 'better-sqlite3';
+import path from 'path';
 import { AutomationRunner, type EventSink } from '../../automation/runner';
 import { getFailedPracticeIds } from '../../database/queries/runs';
 import { createAutomationController, type AutomationController } from './automation-controller';
@@ -31,7 +32,13 @@ export function registerAutomationHandlers(
 
   controller = createAutomationController({
     sink,
-    makeRunner: () => new AutomationRunner(sink, db),
+    makeRunner: () => new AutomationRunner(sink, db, {
+      powerSaveBlocker: {
+        start: () => powerSaveBlocker.start('prevent-display-sleep'),
+        stop: (id) => powerSaveBlocker.stop(id),
+      },
+      screenshotDir: path.join(app.getPath('userData'), 'screenshots'),
+    }),
     getFailedPracticeIds: (runId) => getFailedPracticeIds(db, runId),
   });
 

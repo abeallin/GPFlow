@@ -5,10 +5,10 @@ import type { ProgressEvent, RunCompleteEvent, RunErrorEvent, TwoFactorEvent } f
 
 const { push, ipcFake, handlers } = vi.hoisted(() => {
   const handlers: {
-    progress?: (e: any) => void;
-    twoFactor?: (e: any) => void;
-    complete?: (e: any) => void;
-    error?: (e: any) => void;
+    progress?: (e: unknown) => void;
+    twoFactor?: (e: unknown) => void;
+    complete?: (e: unknown) => void;
+    error?: (e: unknown) => void;
   } = {};
   return {
     push: vi.fn(),
@@ -19,10 +19,10 @@ const { push, ipcFake, handlers } = vi.hoisted(() => {
       stopRun: vi.fn(),
       stopAllRuns: vi.fn(),
       retryFailed: vi.fn(),
-      onProgress: vi.fn((cb: (e: any) => void) => { handlers.progress = cb; }),
-      on2faRequired: vi.fn((cb: (e: any) => void) => { handlers.twoFactor = cb; }),
-      onRunComplete: vi.fn((cb: (e: any) => void) => { handlers.complete = cb; }),
-      onRunError: vi.fn((cb: (e: any) => void) => { handlers.error = cb; }),
+      onProgress: vi.fn((cb: (e: unknown) => void) => { handlers.progress = cb; }),
+      on2faRequired: vi.fn((cb: (e: unknown) => void) => { handlers.twoFactor = cb; }),
+      onRunComplete: vi.fn((cb: (e: unknown) => void) => { handlers.complete = cb; }),
+      onRunError: vi.fn((cb: (e: unknown) => void) => { handlers.error = cb; }),
       removeAllListeners: vi.fn(),
     },
   };

@@ -28,7 +28,7 @@ async function drop(files: File[]) {
 
 function fileRow(name: string): HTMLElement {
   return screen.getByRole('button', { name: new RegExp(`remove file ${name.replace('.', '\\.')}`, 'i') })
-    .closest('div[class*="glass-card"]') as HTMLElement;
+    .closest('li') as HTMLElement;
 }
 
 beforeEach(() => {
@@ -84,7 +84,7 @@ describe('DataPage assignments', () => {
     await drop([csvFile('b.csv', 'accurx_id,name\nB1,Gamma\nB2,Delta\n')]);
     await waitFor(() => expect(JSON.parse(localStorage.getItem('gpflow_practices')!)).toHaveLength(4));
 
-    const ids = JSON.parse(localStorage.getItem('gpflow_practices')!).map((p: any) => p.id);
+    const ids = JSON.parse(localStorage.getItem('gpflow_practices')!).map((p: { id: number }) => p.id);
     expect(new Set(ids).size).toBe(4);
     expect(localStorage.getItem('gpflow_next_practice_id')).toBe('5');
   });

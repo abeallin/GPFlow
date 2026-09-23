@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import type Database from 'better-sqlite3';
 import { createTestDatabase } from '../helpers/sqlite-adapter';
 import { createSchema } from '../../database/schema';
 import { importCsv } from '../../database/csv-import';
@@ -8,7 +9,7 @@ import path from 'path';
 import os from 'os';
 
 describe('CSV Import', () => {
-  let db: any;
+  let db: Database.Database;
   let tmpDir: string;
 
   beforeEach(async () => {
@@ -54,7 +55,7 @@ describe('CSV Import', () => {
 });
 
 describe('CSV Import — RFC 4180 edge cases', () => {
-  let db: any;
+  let db: Database.Database;
   let tmpDir: string;
 
   beforeEach(async () => {
@@ -76,7 +77,7 @@ describe('CSV Import — RFC 4180 edge cases', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.rowCount).toBe(2);
-    const park = getPractices(db).find((p: any) => p.accurx_id === '111')!;
+    const park = getPractices(db).find((p) => p.accurx_id === '111')!;
     expect(JSON.parse(park.metadata).address).toBe('1 High St\r\nLeeds');
   });
 

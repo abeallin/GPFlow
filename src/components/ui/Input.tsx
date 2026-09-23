@@ -1,41 +1,39 @@
-import { type InputHTMLAttributes } from 'react';
+import { useId, type InputHTMLAttributes } from 'react';
 import { AlertCircle } from 'lucide-react';
+import { fieldClasses, FieldShell, useFieldIds } from './field';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
+  hint?: string;
   error?: string;
   icon?: React.ReactNode;
 }
 
-export function Input({ label, error, icon, className = '', ...props }: InputProps) {
+export function Input({ label, hint, error, icon, className = '', id, ...props }: InputProps) {
+  const autoId = useId();
+  const ids = useFieldIds(id ?? autoId, { hint, error });
+
   return (
-    <div className="space-y-1.5">
-      {label && (
-        <label className="block text-sm font-medium text-text-secondary">{label}</label>
-      )}
+    <FieldShell label={label} hint={hint} error={error} ids={ids}>
       <div className="relative">
         {icon && (
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden="true">
             {icon}
           </div>
         )}
         <input
-          className={`w-full px-3 py-2.5 bg-bg-input border rounded-lg text-sm text-text-primary
-            transition-all duration-200
-            placeholder:text-text-muted
-            focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent focus:shadow-[var(--shadow-glow)]
-            ${icon ? 'pl-10' : ''}
-            ${error ? 'border-error ring-2 ring-error/20' : 'border-border hover:border-border-strong'}
-            ${className}`}
+          id={ids.control}
+          aria-describedby={ids.describedBy}
+          aria-invalid={error ? true : undefined}
+          className={`${fieldClasses(Boolean(error))} ${icon ? 'pl-10' : ''} ${className}`}
           {...props}
         />
         {error && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-error">
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-error-text" aria-hidden="true">
             <AlertCircle className="w-4 h-4" />
           </div>
         )}
       </div>
-      {error && <p className="text-xs text-error flex items-center gap-1">{error}</p>}
-    </div>
+    </FieldShell>
   );
 }

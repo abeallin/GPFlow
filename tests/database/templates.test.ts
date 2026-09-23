@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import type Database from 'better-sqlite3';
 import { createTestDatabase } from '../helpers/sqlite-adapter';
 import { createSchema } from '../../database/schema';
 import { saveTemplate, getSavedTemplates, deleteTemplate } from '../../database/queries/templates';
 
 describe('Templates Queries', () => {
-  let db: any;
+  let db: Database.Database;
 
   beforeEach(async () => {
     db = await createTestDatabase();

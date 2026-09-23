@@ -1,14 +1,13 @@
 import { type HTMLAttributes } from 'react';
 
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
-  variant?: 'default' | 'glass' | 'elevated';
+  /** `default`: a bordered panel. `elevated`: a shadowed panel (border OR shadow, never both). */
+  variant?: 'default' | 'elevated';
 }
 
 const variantStyles = {
-  default: 'bg-bg-raised border border-border shadow-[var(--shadow-sm)]',
-  glass: 'glass-card',
-  elevated:
-    'bg-bg-raised border border-border shadow-[var(--shadow-md)] hover:shadow-[var(--shadow-lg)] hover:-translate-y-0.5 transition-all duration-300',
+  default: 'bg-bg-raised border border-border',
+  elevated: 'bg-bg-raised shadow-[var(--shadow-md)]',
 };
 
 export function Card({ variant = 'default', className = '', children, ...props }: CardProps) {

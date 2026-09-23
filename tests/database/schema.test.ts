@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import type Database from 'better-sqlite3';
 import { createTestDatabase } from '../helpers/sqlite-adapter';
 import { createSchema } from '../../database/schema';
 
 describe('Database Schema', () => {
-  let db: any;
+  let db: Database.Database;
 
   beforeEach(async () => {
     db = await createTestDatabase();
@@ -15,10 +16,10 @@ describe('Database Schema', () => {
 
   it('creates all required tables', () => {
     createSchema(db);
-    const tables = db
+    const tables = (db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
-      .all()
-      .map((row: any) => row.name);
+      .all() as { name: string }[])
+      .map((row) => row.name);
 
     expect(tables).toContain('practices');
     expect(tables).toContain('runs');

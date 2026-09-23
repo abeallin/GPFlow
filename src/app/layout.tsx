@@ -1,48 +1,11 @@
 'use client';
 
 import './globals.css';
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Database, FileText, Play, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useRouter } from 'next/navigation';
-import { LogoFull } from '@/components/ui/Logo';
-import { ipc } from '@/lib/ipc-client';
-
-const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? '0.0.0';
-
-const navItems = [
-  { href: '/data', label: 'Data', icon: Database },
-  { href: '/templates', label: 'Templates', icon: FileText },
-  { href: '/runs', label: 'Runs', icon: Play },
-];
+import { AppShell } from '@/components/AppShell';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const [collapsed, setCollapsed] = useState(false);
-  const [isElectron, setIsElectron] = useState(false);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('sidebar_collapsed');
-    if (saved === 'true') setCollapsed(true);
-    setIsElectron(!!window.electronAPI);
-  }, []);
-
-  const toggleCollapsed = (value: boolean) => {
-    setCollapsed(value);
-    localStorage.setItem('sidebar_collapsed', String(value));
-  };
-
-  const handleLogout = async () => {
-    // Clear session data but keep accounts and credentials
-    localStorage.removeItem('gpflow_practices');
-    localStorage.removeItem('gpflow_assignments');
-    localStorage.removeItem('gpflow_uploaded_files');
-    sessionStorage.clear();
-    router.push('/');
-  };
 
   if (pathname === '/') {
     return (
@@ -54,129 +17,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="en">
-      <body className="h-screen flex bg-bg-root overflow-x-hidden">
-        {/* Sidebar */}
-        <motion.nav
-          animate={{ width: collapsed ? 64 : 256 }}
-          transition={{ duration: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
-          className="bg-sidebar flex flex-col shrink-0 border-r border-border-subtle relative overflow-hidden"
-        >
-          {/* Frosted glass sheen */}
-          <div className="absolute inset-0 backdrop-blur-sm bg-[#090B12]/80 pointer-events-none" />
-
-          {/* Logo + collapse toggle — draggable for custom titlebar */}
-          <div className="relative z-10 px-3 pt-9 pb-5 border-b border-border flex items-center justify-between min-h-[68px] drag-region">
-            <AnimatePresence mode="wait">
-              {!collapsed && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="pl-2"
-                >
-                  <LogoFull size="md" showSubtitle subtitleText={isElectron ? 'Desktop' : 'Web'} />
-                </motion.div>
-              )}
-            </AnimatePresence>
-            <button
-              onClick={() => toggleCollapsed(!collapsed)}
-              className="p-2 rounded-lg text-text-muted hover:text-text-secondary hover:bg-sidebar-hover transition-all duration-200 shrink-0 no-drag"
-              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              {collapsed ? (
-                <PanelLeftOpen className="w-4 h-4" />
-              ) : (
-                <PanelLeftClose className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-
-          {/* Nav Items */}
-          <div className="relative z-10 flex-1 px-2 py-4 space-y-1">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const active = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  title={collapsed ? item.label : undefined}
-                  className={`group relative flex items-center rounded-lg text-sm font-medium transition-all duration-200
-                    ${collapsed ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5'}
-                    ${active
-                      ? 'text-text-primary bg-[var(--sidebar-active)]'
-                      : 'text-text-muted hover:text-text-secondary hover:bg-sidebar-hover'
-                    }`}
-                >
-                  {/* Active left accent bar */}
-                  {active && (
-                    <motion.div
-                      layoutId="nav-active"
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-accent"
-                      style={{ boxShadow: '0 0 12px rgba(16, 224, 160, 0.5)' }}
-                      transition={{ type: 'spring', stiffness: 350, damping: 30 }}
-                    />
-                  )}
-                  <Icon className={`w-[18px] h-[18px] shrink-0 transition-colors duration-200 ${active ? 'text-accent' : ''}`} />
-                  {!collapsed && (
-                    <motion.span
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="whitespace-nowrap"
-                    >
-                      {item.label}
-                    </motion.span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-
-          {/* Bottom — version + logout */}
-          <div className="relative z-10 px-2 py-3 border-t border-border space-y-1">
-            {!collapsed && (
-              <div className="px-3 py-1">
-                <span className="text-[10px] font-mono text-text-muted">v{APP_VERSION}</span>
-              </div>
-            )}
-            <button
-              onClick={handleLogout}
-              title={collapsed ? 'Log out' : undefined}
-              className={`flex items-center rounded-lg text-sm font-medium text-text-muted hover:text-error hover:bg-error/10 transition-all duration-200 w-full no-drag
-                ${collapsed ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5'}`}
-            >
-              <LogOut className="w-[18px] h-[18px] shrink-0" />
-              {!collapsed && <span>Log out</span>}
-            </button>
-          </div>
-        </motion.nav>
-
-        {/* Main content — click to collapse sidebar */}
-        <main
-          className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-bg-base relative noise-overlay"
-          onClick={(e) => {
-            // Only collapse if clicking the main background itself, not child elements
-            if (e.target === e.currentTarget && !collapsed) toggleCollapsed(true);
-          }}
-        >
-          {/* Titlebar drag region for main area */}
-          <div className="h-9 drag-region shrink-0 bg-bg-base sticky top-0 z-50" />
-          <div className="relative z-10 min-h-full">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={pathname}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
-                className="min-h-full"
-              >
-                {children}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </main>
+      <body>
+        <AppShell pathname={pathname}>{children}</AppShell>
       </body>
     </html>
   );

@@ -1,26 +1,18 @@
-'use client';
-
-import { motion } from 'framer-motion';
-
 interface EmptyStateProps {
   icon: React.ReactNode;
   title: string;
+  /** One line saying what will appear here, and where it comes from. */
   description: string;
   action?: React.ReactNode;
 }
 
 export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="flex flex-col items-center justify-center py-16 px-8 text-center"
-    >
-      <div className="text-text-muted mb-4 [&>svg]:w-12 [&>svg]:h-12">{icon}</div>
-      <h3 className="text-lg font-semibold text-text-primary font-display mb-1">{title}</h3>
-      <p className="text-sm text-text-muted max-w-sm mb-6">{description}</p>
-      {action}
-    </motion.div>
+    <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
+      <div className="text-text-muted mb-4 [&>svg]:w-10 [&>svg]:h-10" aria-hidden="true">{icon}</div>
+      <p className="text-base font-semibold text-text-primary mb-1">{title}</p>
+      <p className="text-sm text-text-secondary max-w-sm">{description}</p>
+      {action && <div className="mt-6">{action}</div>}
+    </div>
   );
 }

@@ -1,30 +1,24 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Play, TrendingUp, Clock, Square, OctagonX } from 'lucide-react';
 import { Tabs } from '@/components/ui/Tabs';
 import { Button } from '@/components/ui/Button';
 import { StatCard } from '@/components/ui/StatCard';
 import { Alert } from '@/components/ui/Alert';
+import { toast } from '@/components/ui/Toast';
 import { ProgressFeed } from '@/components/ProgressFeed';
 import { RunHistory } from '@/components/RunHistory';
 import { useAutomationProgress } from '@/hooks/useAutomationProgress';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { ipc } from '@/lib/ipc-client';
-
-const staggerContainer = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.1 } },
-} as const;
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 12 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' as const } },
-} as const;
+import type { Run } from '@/lib/types';
 
 export default function RunsPage() {
-  const { events, summary, activeRuns, twoFactorRunIds, runProgress, errors, dismissError } = useAutomationProgress();
-  const [runs, setRuns] = useState<any[]>([]);
+  usePageTitle('Runs');
+  const { events, summary, completed, activeRuns, twoFactorRunIds, runProgress, errors, dismissError } = useAutomationProgress();
+  // null = unknown (not loaded, or failed): stat tiles show a dash, never 0.
+  const [runs, setRuns] = useState<Run[] | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [stopping, setStopping] = useState<Set<number | 'all'>>(new Set());
   const [stopError, setStopError] = useState<string | null>(null);
@@ -37,6 +31,24 @@ export default function RunsPage() {
       .catch((err) => { if (!cancelled) setHistoryError(err instanceof Error ? err.message : 'Failed to load runs'); });
     return () => { cancelled = true; };
   }, [summary]);
+
+  // Every outcome is toasted and announced (docs/ui-rules.md §7).
+  useEffect(() => {
+    const last = completed[completed.length - 1];
+    if (!last) return;
+    const { summary: s } = last;
+    toast({
+      tone: s.failCount > 0 ? 'info' : 'success',
+      title: `Run for ${last.accountLabel || `#${last.runId}`} finished`,
+      message: `${s.successCount} succeeded, ${s.failCount} failed of ${s.totalCount}`,
+    });
+  }, [completed]);
+
+  useEffect(() => {
+    const last = errors[errors.length - 1];
+    if (!last) return;
+    toast({ tone: 'error', title: `Run for ${last.accountLabel || `#${last.runId}`} failed`, message: last.error });
+  }, [errors]);
 
   const markStopping = (key: number | 'all', on: boolean) => {
     setStopping((prev) => {
@@ -72,68 +84,50 @@ export default function RunsPage() {
     }
   };
 
-  const successRate = runs.length > 0
-    ? Math.round((runs.filter((r: any) => r.status === 'completed').length / runs.length) * 100)
-    : 0;
+  const successRate = runs && runs.length > 0
+    ? `${Math.round((runs.filter((r) => r.status === 'completed').length / runs.length) * 100)}%`
+    : runs ? '0%' : null;
+  const lastRun = runs ? (runs[0] ? new Date(runs[0].started_at).toLocaleDateString('en-GB') : 'No runs yet') : null;
 
-  const twoFactorRuns = activeRuns.filter((r) => twoFactorRunIds.includes(r.runId));
   const twoFactorLabels = twoFactorRunIds.map((id) => activeRuns.find((r) => r.runId === id)?.accountLabel || `run #${id}`);
 
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="flex items-center justify-between"
-      >
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl text-text-primary font-[var(--font-display)] tracking-[-0.03em]">
           Run Dashboard
         </h1>
         {activeRuns.length > 0 && (
           <Button
-            variant="danger"
+            variant="secondary"
             size="sm"
-            icon={<OctagonX className="w-4 h-4" />}
-            loading={stopping.has('all')}
+            icon={<OctagonX className="w-4 h-4" aria-hidden="true" />}
+            pending={stopping.has('all')}
+            pendingLabel="Stopping…"
             onClick={handleStopAll}
           >
             Stop all
           </Button>
         )}
-      </motion.div>
+      </div>
 
-      {/* Stats */}
-      <motion.div
-        initial="hidden"
-        animate="visible"
-        variants={staggerContainer}
-        className="grid grid-cols-3 gap-4"
-      >
-        <motion.div variants={fadeUp}>
-          <StatCard label="Total Runs" value={runs.length} icon={<Play />} />
-        </motion.div>
-        <motion.div variants={fadeUp}>
-          <StatCard label="Success Rate" value={`${successRate}%`} icon={<TrendingUp />} />
-        </motion.div>
-        <motion.div variants={fadeUp}>
-          <StatCard label="Last Run" value={runs[0] ? new Date(runs[0].started_at).toLocaleDateString() : 'Never'} icon={<Clock />} />
-        </motion.div>
-      </motion.div>
+      <div className="grid grid-cols-3 gap-4">
+        <StatCard label="Total runs" value={runs ? runs.length : null} icon={<Play />} />
+        <StatCard label="Success rate" value={successRate} icon={<TrendingUp />} />
+        <StatCard label="Last run" value={lastRun} icon={<Clock />} />
+      </div>
 
-      {/* Active runs */}
       {activeRuns.length > 0 && (
-        <div className="glass-card rounded-2xl p-4 space-y-2">
-          <p className="label">Active runs</p>
-          <ul className="space-y-2">
+        <section aria-labelledby="active-heading" className="rounded-xl border border-border bg-bg-raised p-4 space-y-2">
+          <h2 id="active-heading" className="text-xs font-semibold text-text-secondary font-[var(--font-body)] tracking-normal">Active runs</h2>
+          <ul className="space-y-2 list-none m-0 p-0">
             {activeRuns.map((run) => (
               <li key={run.runId} className="flex items-center justify-between gap-3 bg-bg-root rounded-xl px-4 py-2.5">
                 <div className="flex items-center gap-2 min-w-0 text-sm">
-                  <span className="font-mono text-xs text-text-muted">#{run.runId}</span>
+                  <span className="font-mono text-xs text-text-secondary">#{run.runId}</span>
                   <span className="text-text-primary truncate">{run.accountLabel || 'Unlabelled account'}</span>
                   {twoFactorRunIds.includes(run.runId) && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/10 text-warning border border-warning/20">
+                    <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning border border-warning/20">
                       Waiting for 2FA
                     </span>
                   )}
@@ -142,8 +136,9 @@ export default function RunsPage() {
                   variant="secondary"
                   size="sm"
                   aria-label={`Stop ${run.accountLabel || `run ${run.runId}`}`}
-                  icon={<Square className="w-3.5 h-3.5" />}
-                  loading={stopping.has(run.runId)}
+                  icon={<Square className="w-3.5 h-3.5" aria-hidden="true" />}
+                  pending={stopping.has(run.runId)}
+                  pendingLabel="Stopping…"
                   onClick={() => handleStop(run.runId)}
                 >
                   Stop
@@ -151,90 +146,55 @@ export default function RunsPage() {
               </li>
             ))}
           </ul>
-        </div>
+        </section>
       )}
 
-      {/* Alerts */}
-      <AnimatePresence>
-        {stopError && (
-          <motion.div key="stop-error" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-            <Alert variant="error" title="Could not stop run" onDismiss={() => setStopError(null)}>{stopError}</Alert>
-          </motion.div>
-        )}
+      {stopError && (
+        <Alert variant="error" title="Could not stop run" onDismiss={() => setStopError(null)}>{stopError}</Alert>
+      )}
 
-        {historyError && (
-          <motion.div key="history-error" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-            <Alert variant="error" title="Run history unavailable" onDismiss={() => setHistoryError(null)}>{historyError}</Alert>
-          </motion.div>
-        )}
+      {historyError && (
+        <Alert variant="error" title="Run history unavailable" onDismiss={() => setHistoryError(null)}>{historyError}</Alert>
+      )}
 
-        {twoFactorRuns.length > 0 || twoFactorRunIds.length > 0 ? (
-          <motion.div
-            key="2fa"
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-          >
-            <Alert variant="warning" title="Two-Factor Authentication Required">
-              Complete 2FA in the browser window for {twoFactorLabels.join(', ')} to continue. Progress resumes automatically.
-            </Alert>
-          </motion.div>
-        ) : null}
+      {twoFactorRunIds.length > 0 && (
+        <Alert variant="warning" title="Two-factor authentication required">
+          Complete 2FA in the browser window for {twoFactorLabels.join(', ')} to continue. Progress resumes automatically.
+        </Alert>
+      )}
 
-        {errors.map((err, i) => (
-          <motion.div
-            key={`err-${err.runId}-${i}`}
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-          >
-            <Alert variant="error" title={`Run #${err.runId} failed${err.accountLabel ? ` (${err.accountLabel})` : ''}`} onDismiss={() => dismissError(i)}>
-              {err.error}
-            </Alert>
-          </motion.div>
-        ))}
+      {errors.map((err, i) => (
+        <Alert key={`err-${err.runId}-${i}`} variant="error" title={`Run #${err.runId} failed${err.accountLabel ? ` (${err.accountLabel})` : ''}`} onDismiss={() => dismissError(i)}>
+          {err.error}
+        </Alert>
+      ))}
 
-        {summary && (
-          <motion.div
-            key="summary"
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-          >
-            <Alert variant="success" title="Run Complete">
-              <div className="grid grid-cols-3 gap-4 mt-2 font-mono text-sm">
-                <div><span className="text-text-muted">Total:</span> {summary.totalCount}</div>
-                <div><span className="text-text-muted">Success:</span> <span className="text-accent">{summary.successCount}</span></div>
-                <div><span className="text-text-muted">Failed:</span> <span className="text-error">{summary.failCount}</span></div>
-              </div>
-            </Alert>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {summary && (
+        <Alert variant="success" title="Run complete">
+          <dl className="grid grid-cols-3 gap-4 mt-2 text-sm tabular-nums m-0">
+            <div><dt className="inline text-text-secondary">Total: </dt><dd className="inline">{summary.totalCount}</dd></div>
+            <div><dt className="inline text-text-secondary">Succeeded: </dt><dd className="inline text-accent">{summary.successCount}</dd></div>
+            <div><dt className="inline text-text-secondary">Failed: </dt><dd className="inline text-error-text">{summary.failCount}</dd></div>
+          </dl>
+        </Alert>
+      )}
 
-      {/* Tabs */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.4 }}
-      >
-        <Tabs tabs={[
-          {
-            id: 'live',
-            label: 'Live Progress',
-            content: (
-              <div className="glass-card rounded-2xl p-5">
-                <ProgressFeed events={events} progress={runProgress} />
-              </div>
-            ),
-          },
-          {
-            id: 'history',
-            label: 'Run History',
-            content: <RunHistory />,
-          },
-        ]} />
-      </motion.div>
+      <Tabs tabs={[
+        {
+          id: 'live',
+          label: 'Live Progress',
+          content: (
+            <div className="rounded-xl border border-border bg-bg-raised p-5">
+              <ProgressFeed events={events} progress={runProgress} />
+            </div>
+          ),
+        },
+        {
+          id: 'history',
+          label: 'Run History',
+          content: <RunHistory />,
+        },
+      ]} />
     </div>
   );
 }

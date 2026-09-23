@@ -18,11 +18,21 @@ export function saveSnapshot(
   return tx();
 }
 
+/** A row of `page_snapshots` as stored: `selectors` is JSON text and `is_current` is 0/1. */
+export interface SnapshotRow {
+  id: number;
+  action: string;
+  selectors: string;
+  dom_hash: string;
+  captured_at: string;
+  is_current: number;
+}
+
 export function getCurrentSnapshot(
   db: Database.Database,
   action: string,
-): any | undefined {
+): SnapshotRow | undefined {
   return db.prepare(
     'SELECT * FROM page_snapshots WHERE action = ? AND is_current = 1'
-  ).get(action);
+  ).get(action) as SnapshotRow | undefined;
 }

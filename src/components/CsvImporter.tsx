@@ -1,19 +1,18 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Upload, FileSpreadsheet, CheckCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Badge } from './ui/Badge';
-import { ipc } from '@/lib/ipc-client';
 import { parseCsv } from '@/lib/csv-parser';
+import type { PracticeLike } from '@/lib/assignments';
 
 interface CsvImporterProps {
   onImported: () => void;
-  onParsedWeb?: (practices: any[]) => void;
+  onParsedWeb?: (practices: PracticeLike[]) => void;
   compact?: boolean;
 }
 
-function parseCsvText(text: string, fileName: string): { practices: any[]; errors: string[] } {
+function parseCsvText(text: string, fileName: string): { practices: PracticeLike[]; errors: string[] } {
   const { header: rawHeader, rows, errors: parseErrors } = parseCsv(text);
 
   if (rawHeader.length === 0 || rows.length === 0) {
@@ -38,8 +37,7 @@ function parseCsvText(text: string, fileName: string): { practices: any[]; error
   }
 
   const nameIdx = header.findIndex((h) => h === 'name' || h === 'practice_name' || h === 'name_on_accurx');
-
-  const practices: any[] = [];
+  const practices: PracticeLike[] = [];
 
   rows.forEach((values, i) => {
     const row: Record<string, string> = {};
@@ -64,31 +62,23 @@ function parseCsvText(text: string, fileName: string): { practices: any[]; error
   return { practices, errors };
 }
 
+/**
+ * The drop zone is a real button (docs/ui-rules.md §8): reachable by keyboard,
+ * named for assistive tech, and it opens the native file picker.
+ */
 export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImporterProps) {
   const [result, setResult] = useState<{ rowCount: number; errors: string[] } | null>(null);
   const [loading, setLoading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Use refs to always have the latest callbacks (avoids stale closures)
+  // Latest callbacks for the async FileReader completions, synced after render (never during it).
   const onParsedWebRef = useRef(onParsedWeb);
   const onImportedRef = useRef(onImported);
-  onParsedWebRef.current = onParsedWeb;
-  onImportedRef.current = onImported;
-
-  const handleElectronImport = async () => {
-    if (!ipc) return;
-    setLoading(true);
-    try {
-      const res = await ipc.importCsv();
-      setResult(res);
-      if (res.rowCount > 0) onImportedRef.current();
-    } catch (err) {
-      setResult({ rowCount: 0, errors: [err instanceof Error ? err.message : 'Import failed'] });
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    onParsedWebRef.current = onParsedWeb;
+    onImportedRef.current = onImported;
+  });
 
   const processFiles = (files: File[]) => {
     const csvFiles = files.filter((f) => f.name.toLowerCase().endsWith('.csv'));
@@ -102,8 +92,20 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
 
     let totalRows = 0;
     const allErrors: string[] = [];
-    const allPractices: any[] = [];
+    const allPractices: PracticeLike[] = [];
     let processed = 0;
+
+    const finish = () => {
+      processed++;
+      if (processed === csvFiles.length) {
+        setResult({ rowCount: totalRows, errors: allErrors });
+        setLoading(false);
+        if (allPractices.length > 0) {
+          onParsedWebRef.current?.(allPractices);
+          onImportedRef.current();
+        }
+      }
+    };
 
     for (const file of csvFiles) {
       const reader = new FileReader();
@@ -113,16 +115,11 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
         totalRows += practices.length;
         allErrors.push(...errors);
         allPractices.push(...practices);
-        processed++;
-
-        if (processed === csvFiles.length) {
-          setResult({ rowCount: totalRows, errors: allErrors });
-          setLoading(false);
-          if (allPractices.length > 0) {
-            onParsedWebRef.current?.(allPractices);
-            onImportedRef.current();
-          }
-        }
+        finish();
+      };
+      reader.onerror = () => {
+        allErrors.push(`${file.name}: could not be read`);
+        finish();
       };
       reader.readAsText(file);
     }
@@ -131,7 +128,6 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    // Always process selected files directly — works in both web and Electron
     processFiles([...files]);
     e.target.value = '';
   };
@@ -158,6 +154,7 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
   };
 
   const hasResult = result && result.rowCount > 0;
+  const failed = result && result.rowCount === 0 && result.errors.length > 0;
 
   return (
     <div className="space-y-3">
@@ -168,85 +165,61 @@ export function CsvImporter({ onImported, onParsedWeb, compact = false }: CsvImp
         multiple
         onChange={handleFileInput}
         className="hidden"
+        tabIndex={-1}
+        aria-hidden="true"
       />
 
-      <motion.div
+      <button
+        type="button"
+        aria-label="Choose CSV files"
+        aria-busy={loading || undefined}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onClick={() => fileInputRef.current?.click()}
-        whileTap={{ scale: 0.99 }}
-        className={`relative cursor-pointer border-2 border-dashed rounded-xl text-center transition-all duration-200
+        className={`w-full border-2 border-dashed rounded-xl text-center transition-colors duration-150
           ${compact ? 'p-3' : 'p-6'}
           ${dragging
-            ? 'border-accent bg-accent-subtle scale-[1.01]'
+            ? 'border-accent bg-accent-subtle'
             : hasResult
               ? 'border-accent/30 bg-accent-subtle'
-              : 'border-border-strong hover:border-accent/40 hover:bg-bg-overlay'
+              : 'border-edge hover:border-accent/40 hover:bg-bg-overlay'
           }`}
       >
-        <AnimatePresence mode="wait">
-          {loading ? (
-            <motion.div
-              key="loading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className={compact ? 'flex items-center justify-center gap-2' : 'flex flex-col items-center gap-2'}
-            >
-              <div className={`rounded-full border-2 border-accent border-t-transparent animate-spin ${compact ? 'w-5 h-5' : 'w-10 h-10'}`} />
-              <p className="text-sm text-text-secondary">Importing...</p>
-            </motion.div>
-          ) : hasResult ? (
-            <motion.div
-              key="result"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0 }}
-              className={compact ? 'flex items-center justify-center gap-3' : 'flex flex-col items-center gap-2'}
-            >
-              {!compact && <CheckCircle className="w-10 h-10 text-success" />}
-              <div className="flex items-center gap-2">
-                <Badge variant="success" dot>{result.rowCount} records imported</Badge>
-                {result.errors.length > 0 && (
-                  <Badge variant="warning" dot>{result.errors.length} warnings</Badge>
-                )}
-              </div>
-              <p className="text-xs text-text-muted">{compact ? 'Click to replace' : 'Drop another file or click to replace'}</p>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="idle"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className={compact ? 'flex items-center justify-center gap-3' : 'flex flex-col items-center gap-3'}
-            >
-              <div className={`rounded-xl flex items-center justify-center transition-colors duration-200 ${
-                compact ? 'w-8 h-8' : 'w-12 h-12'
-              } ${dragging ? 'bg-accent/10 text-accent' : 'bg-bg-overlay text-text-muted'}`}>
-                {dragging ? <FileSpreadsheet className={compact ? 'w-4 h-4' : 'w-6 h-6'} /> : <Upload className={compact ? 'w-4 h-4' : 'w-6 h-6'} />}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-text-primary">
-                  {dragging ? 'Drop your CSV here' : compact ? 'Drop CSV or click to replace' : 'Drop CSV files or click to browse'}
-                </p>
-                {!compact && <p className="text-xs text-text-muted mt-0.5">Supports multiple .csv files with an accurx_id column</p>}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {result && result.rowCount === 0 && result.errors.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-3"
-          >
-            <Badge variant="error" dot>{result.errors[0]}</Badge>
-          </motion.div>
+        {loading ? (
+          <div className={compact ? 'flex items-center justify-center gap-2' : 'flex flex-col items-center gap-2'}>
+            <div className={`rounded-full border-2 border-accent border-t-transparent animate-spin motion-reduce:animate-none ${compact ? 'w-5 h-5' : 'w-10 h-10'}`} aria-hidden="true" />
+            <p className="text-sm text-text-secondary">Reading files…</p>
+          </div>
+        ) : hasResult ? (
+          <div className={compact ? 'flex items-center justify-center gap-3' : 'flex flex-col items-center gap-2'}>
+            {!compact && <CheckCircle className="w-10 h-10 text-accent" aria-hidden="true" />}
+            <div className="flex items-center gap-2">
+              <Badge variant="success">{result.rowCount} records imported</Badge>
+              {result.errors.length > 0 && (
+                <Badge variant="warning">{result.errors.length} warnings</Badge>
+              )}
+            </div>
+            <p className="text-xs text-text-secondary">{compact ? 'Drop or choose more files' : 'Drop another file or choose more'}</p>
+          </div>
+        ) : (
+          <div className={compact ? 'flex items-center justify-center gap-3' : 'flex flex-col items-center gap-3'}>
+            <div className={`rounded-xl flex items-center justify-center ${compact ? 'w-8 h-8' : 'w-12 h-12'} ${dragging ? 'bg-accent/10 text-accent' : 'bg-bg-overlay text-text-secondary'}`} aria-hidden="true">
+              {dragging ? <FileSpreadsheet className={compact ? 'w-4 h-4' : 'w-6 h-6'} /> : <Upload className={compact ? 'w-4 h-4' : 'w-6 h-6'} />}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-text-primary">
+                {dragging ? 'Drop your CSV here' : compact ? 'Drop CSV or choose files' : 'Drop CSV files or click to browse'}
+              </p>
+              {!compact && <p className="text-xs text-text-secondary mt-0.5">Supports multiple .csv files with an accurx_id column</p>}
+            </div>
+          </div>
         )}
-      </motion.div>
+      </button>
+
+      {failed && (
+        <p role="alert" className="text-sm text-error-text">{result.errors[0]}</p>
+      )}
     </div>
   );
 }

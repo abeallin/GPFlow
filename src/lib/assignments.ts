@@ -14,13 +14,13 @@ export interface PracticeLike {
   name?: string;
   accurx_id: string;
   source_file: string;
-  [key: string]: any;
+  /** CSV columns are flattened onto the row; SQLite returns only these scalar types. */
+  [key: string]: string | number | boolean | null | undefined;
 }
 
 export interface UploadedFileLike {
   fileName: string;
   accountId: string | null;
-  [key: string]: any;
 }
 
 /** Record<practiceKey, accountId> */

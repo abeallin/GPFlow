@@ -1,4 +1,8 @@
 import initSqlJs, { type Database as SqlJsDatabase } from 'sql.js';
+import type Database from 'better-sqlite3';
+
+type BindParams = Parameters<SqlJsDatabase['run']>[1];
+type Row = Record<string, unknown>;
 
 /**
  * Wraps a sql.js Database to match the better-sqlite3 API surface
@@ -19,20 +23,18 @@ export class DatabaseAdapter {
     return new StatementAdapter(this.db, sql);
   }
 
-  transaction<T extends (...args: any[]) => any>(fn: T): T {
-    const self = this;
-    const wrapper = ((...args: any[]) => {
-      self.db.run('BEGIN');
+  transaction<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+    return (...args: A): R => {
+      this.db.run('BEGIN');
       try {
         const result = fn(...args);
-        self.db.run('COMMIT');
+        this.db.run('COMMIT');
         return result;
       } catch (err) {
-        self.db.run('ROLLBACK');
+        this.db.run('ROLLBACK');
         throw err;
       }
-    }) as unknown as T;
-    return wrapper;
+    };
   }
 
   pragma(_str: string): void {
@@ -50,8 +52,8 @@ export class DatabaseAdapter {
  */
 function convertNamedParams(
   sql: string,
-  params: any[],
-): { sql: string; params: any[] } {
+  params: unknown[],
+): { sql: string; params: unknown[] } {
   // If single object param with named params, convert @name -> $name
   if (
     params.length === 1 &&
@@ -59,7 +61,7 @@ function convertNamedParams(
     typeof params[0] === 'object' &&
     !Array.isArray(params[0])
   ) {
-    const converted: Record<string, any> = {};
+    const converted: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(params[0])) {
       converted[`$${key}`] = value;
     }
@@ -73,16 +75,16 @@ function convertNamedParams(
  * Flatten params: if a single object with $keys, return it as-is for sql.js binding.
  * Otherwise return the positional array.
  */
-function resolveBindings(params: any[]): any {
+function resolveBindings(params: unknown[]): BindParams {
   if (
     params.length === 1 &&
     params[0] !== null &&
     typeof params[0] === 'object' &&
     !Array.isArray(params[0])
   ) {
-    return params[0];
+    return params[0] as BindParams;
   }
-  return params;
+  return params as BindParams;
 }
 
 class StatementAdapter {
@@ -94,7 +96,7 @@ class StatementAdapter {
     this.sql = sql;
   }
 
-  run(...params: any[]): { lastInsertRowid: number; changes: number } {
+  run(...params: unknown[]): { lastInsertRowid: number; changes: number } {
     const { sql, params: converted } = convertNamedParams(this.sql, params);
     const bindings = resolveBindings(converted);
 
@@ -113,7 +115,7 @@ class StatementAdapter {
     return { lastInsertRowid, changes };
   }
 
-  get(...params: any[]): any | undefined {
+  get(...params: unknown[]): Row | undefined {
     const { sql, params: converted } = convertNamedParams(this.sql, params);
     const bindings = resolveBindings(converted);
 
@@ -121,7 +123,7 @@ class StatementAdapter {
     stmt.bind(bindings);
 
     if (stmt.step()) {
-      const row = stmt.getAsObject();
+      const row = stmt.getAsObject() as Row;
       stmt.free();
       return row;
     }
@@ -129,16 +131,16 @@ class StatementAdapter {
     return undefined;
   }
 
-  all(...params: any[]): any[] {
+  all(...params: unknown[]): Row[] {
     const { sql, params: converted } = convertNamedParams(this.sql, params);
     const bindings = resolveBindings(converted);
 
-    const results: any[] = [];
+    const results: Row[] = [];
     const stmt = this.db.prepare(sql);
     stmt.bind(bindings);
 
     while (stmt.step()) {
-      results.push(stmt.getAsObject());
+      results.push(stmt.getAsObject() as Row);
     }
     stmt.free();
     return results;
@@ -147,9 +149,11 @@ class StatementAdapter {
 
 /**
  * Creates an in-memory test database wrapped with the better-sqlite3 API adapter.
+ * Typed as `Database.Database` because that is the contract every query module and the
+ * runner are written against; the adapter implements the subset they use.
  */
-export async function createTestDatabase(): Promise<DatabaseAdapter> {
+export async function createTestDatabase(): Promise<Database.Database> {
   const SQL = await initSqlJs();
   const db = new SQL.Database();
-  return new DatabaseAdapter(db);
+  return new DatabaseAdapter(db) as unknown as Database.Database;
 }

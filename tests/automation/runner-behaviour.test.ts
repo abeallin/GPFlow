@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type Database from 'better-sqlite3';
 import { createTestDatabase } from '../helpers/sqlite-adapter';
 import { createSchema } from '../../database/schema';
 import { getRunSteps, getRuns } from '../../database/queries/runs';
 import { AutomationRunner, type RunnerDeps, type RunConfig } from '../../automation/runner';
+import type { Browser, Page } from 'playwright-core';
 
 const TEMPLATES_URL = 'https://web.accurx.com/w/1/settings/templates?tab=OrganisationTemplates';
 
@@ -14,7 +16,7 @@ function deferred<T>() {
 }
 
 function fakeBrowser() {
-  const pages: any[] = [];
+  const pages: ReturnType<typeof makePage>[] = [];
   const makePage = () => {
     const page = {
       goto: vi.fn(async () => {}),
@@ -33,7 +35,7 @@ function fakeBrowser() {
 }
 
 function sink() {
-  const events: { channel: string; payload: any }[] = [];
+  const events: { channel: string; payload: unknown }[] = [];
   return { events, send: (channel: string, payload: unknown) => { events.push({ channel, payload }); } };
 }
 
@@ -54,7 +56,7 @@ const baseConfig = (): RunConfig => ({
 });
 
 describe('AutomationRunner', () => {
-  let db: any;
+  let db: Database.Database;
   let fb: ReturnType<typeof fakeBrowser>;
   let events: ReturnType<typeof sink>;
   let deps: RunnerDeps;
@@ -65,7 +67,7 @@ describe('AutomationRunner', () => {
     fb = fakeBrowser();
     events = sink();
     deps = {
-      launchBrowser: async () => fb.browser as any,
+      launchBrowser: async () => fb.browser as unknown as Browser,
       login: vi.fn(async () => ({ success: true, requires2fa: false })),
       waitFor2fa: vi.fn(async () => true),
       createTemplate: vi.fn(async () => ({ success: true, alreadyExists: false })),
@@ -88,7 +90,7 @@ describe('AutomationRunner', () => {
 
     const steps = getRunSteps(db, runId);
     expect(steps.map((s) => s.status)).toEqual(['success', 'success', 'success']);
-    const visited = fb.pages.flatMap((p) => p.goto.mock.calls.map((c: any[]) => c[0]));
+    const visited = fb.pages.flatMap((p) => p.goto.mock.calls.map((c: unknown[]) => c[0]));
     expect(visited).toEqual(expect.arrayContaining([
       expect.stringContaining('/w/AAA/'), expect.stringContaining('/w/BBB/'), expect.stringContaining('/w/CCC/'),
     ]));
@@ -155,7 +157,7 @@ describe('AutomationRunner', () => {
   });
 
   it('delete: notFound → skipped, other failure → failed with its message', async () => {
-    deps.deleteTemplate = vi.fn(async (_page: any, _name: string) => ({ success: false, deletedCount: 0, notFound: true, error: 'No template' }));
+    deps.deleteTemplate = vi.fn(async (_page: Page, _name: string) => ({ success: false, deletedCount: 0, notFound: true, error: 'No template' }));
     let runner = makeRunner();
     let runId = await runner.run({ ...baseConfig(), type: 'delete', practices: practices.slice(0, 1) });
     expect(getRunSteps(db, runId)[0].status).toBe('skipped');
@@ -188,7 +190,7 @@ describe('AutomationRunner', () => {
     const runner = makeRunner();
     expect(() => runner.launch({ ...baseConfig(), practices: [] })).toThrow(/practice/i);
     expect(() => runner.launch({ ...baseConfig(), credentials: { username: '', password: '' } })).toThrow(/credential/i);
-    expect(() => runner.launch({ ...baseConfig(), type: 'explode' as any })).toThrow(/type/i);
+    expect(() => runner.launch({ ...baseConfig(), type: 'explode' as unknown as RunConfig['type'] })).toThrow(/type/i);
     expect(deps.powerSaveBlocker!.start).not.toHaveBeenCalled();
   });
 
@@ -196,14 +198,13 @@ describe('AutomationRunner', () => {
     const runner1 = makeRunner();
     await runner1.run(baseConfig());
     fb = fakeBrowser();
-    (fb.pages as any).contentOverride = true;
     deps.launchBrowser = async () => ({
       ...fb.browser,
       newContext: async () => ({
         newPage: async () => { const p = await fb.context.newPage(); p.content = async () => '<html>different</html>'; return p; },
         close: async () => {},
       }),
-    }) as any;
+    }) as unknown as Browser;
     const runner2 = makeRunner();
     await runner2.run(baseConfig());
 

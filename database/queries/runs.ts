@@ -114,9 +114,23 @@ export function completeRun(
   `).run(counts.success_count, counts.fail_count, status, runId);
 }
 
-export function getRuns(db: Database.Database, limit = 50, offset = 0): any[] {
+/** A row of the `runs` table as SQLite returns it (`template_config` is the stored JSON string). */
+export interface RunRow {
+  id: number;
+  started_at: string;
+  completed_at: string | null;
+  type: 'create' | 'delete';
+  template_config: string;
+  total_count: number;
+  success_count: number;
+  fail_count: number;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  concurrency: number;
+}
+
+export function getRuns(db: Database.Database, limit = 50, offset = 0): RunRow[] {
   return db.prepare('SELECT * FROM runs ORDER BY started_at DESC, id DESC LIMIT ? OFFSET ?')
-    .all(limit, offset);
+    .all(limit, offset) as RunRow[];
 }
 
 export function getRunSteps(db: Database.Database, runId: number): RunStep[] {

@@ -35,13 +35,20 @@ function seed(opts: { assignments?: Record<string, string>; selected?: number[] 
   sessionStorage.setItem('selectedPracticeIds', JSON.stringify(opts.selected ?? [1, 2]));
 }
 
-async function submitCreate() {
-  const nameInput = await screen.findByPlaceholderText(/enter template name/i);
-  fireEvent.change(nameInput, { target: { value: 'Flu 2026' } });
-  fireEvent.change(screen.getByPlaceholderText(/enter the template message/i), { target: { value: 'Hello' } });
-  const button = screen.getByRole('button', { name: /bulk create template/i });
+/** Fill the create form and submit. Bulk actions confirm first (docs/ui-rules.md §5), so
+ *  `confirm: true` also presses the dialog's confirm button. */
+async function submitCreate(confirm = true) {
+  const panel = screen.getByRole('tabpanel', { name: /create template/i });
+  const { within } = await import('@testing-library/react');
+  fireEvent.change(within(panel).getByLabelText(/template name/i), { target: { value: 'Flu 2026' } });
+  fireEvent.change(within(panel).getByLabelText(/message body/i), { target: { value: 'Hello' } });
+  const button = within(panel).getByRole('button', { name: /bulk create template/i });
   fireEvent.click(button);
-  return button as HTMLButtonElement;
+  if (!confirm) return button as HTMLButtonElement;
+  const dialog = await screen.findByRole('alertdialog');
+  const confirmButton = within(dialog).getByRole('button', { name: /create on 2 practices/i });
+  fireEvent.click(confirmButton);
+  return confirmButton as HTMLButtonElement;
 }
 
 beforeEach(() => {
@@ -61,10 +68,12 @@ describe('TemplatesPage run start', () => {
     render(<TemplatesPage />);
     await screen.findByText(/one: 1/);
 
-    const button = await submitCreate();
+    await submitCreate();
 
     await waitFor(() => expect(ipcFake.startRun).toHaveBeenCalledTimes(2));
-    expect(button.disabled).toBe(true);
+    const dialog = screen.getByRole('alertdialog');
+    const { within } = await import('@testing-library/react');
+    expect(within(dialog).getByRole('button', { name: /starting/i })).toHaveAttribute('aria-busy', 'true');
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -73,9 +82,10 @@ describe('TemplatesPage run start', () => {
     render(<TemplatesPage />);
     await screen.findByText(/unassigned: 2/i);
 
-    await submitCreate();
+    await submitCreate(false);
 
-    await waitFor(() => expect(screen.getByText(/no assigned practices/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText(/no assigned practices/i).length).toBeGreaterThan(0));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(ipcFake.startRun).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
   });
@@ -137,7 +147,8 @@ describe('TemplatesPage run start', () => {
 
     await submitCreate();
 
-    await waitFor(() => expect(screen.getByText(/password/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/no stored password/i));
+    expect(screen.getByRole('alertdialog')).toBeTruthy(); // failure keeps the dialog open
     expect(ipcFake.startRun).not.toHaveBeenCalled();
   });
 });

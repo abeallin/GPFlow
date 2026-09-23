@@ -14,9 +14,10 @@ interface LogoFullProps {
  */
 export function LogoFull({ size = 'md', className = '', showSubtitle = false, subtitleText = 'Desktop' }: LogoFullProps) {
   const config = {
-    sm: { text: 'text-base', gap: 'gap-0.5', label: 'text-[8px]' },
-    md: { text: 'text-lg', gap: 'gap-0.5', label: 'text-[9px]' },
-    lg: { text: 'text-2xl', gap: 'gap-1', label: 'text-[10px]' },
+    // 11px is the floor for uppercase labels (docs/ui-rules.md §3)
+    sm: { text: 'text-base', gap: 'gap-0.5', label: 'text-[11px]' },
+    md: { text: 'text-lg', gap: 'gap-0.5', label: 'text-[11px]' },
+    lg: { text: 'text-2xl', gap: 'gap-1', label: 'text-[11px]' },
   };
 
   const { text, gap, label } = config[size];
@@ -50,15 +51,12 @@ export function LogoHero({ className = '' }: { className?: string }) {
         <span className="font-[var(--font-display)] italic text-accent ml-[0.08em]">Flow</span>
       </h1>
 
-      {/* Thin accent line */}
-      <div
-        className="w-12 h-px mb-4"
-        style={{ background: 'linear-gradient(90deg, transparent, #10E0A0, transparent)' }}
-      />
+      {/* Thin accent rule */}
+      <div className="w-12 h-px mb-4 bg-accent rounded-full" aria-hidden="true" />
 
-      {/* Tagline */}
-      <p className="text-text-muted text-xs font-[var(--font-body)] uppercase tracking-[0.15em] font-medium">
-        Accurx Template Automation
+      {/* Tagline: sentence case, 12px 600 (docs/ui-rules.md §3) */}
+      <p className="text-text-secondary text-xs font-[var(--font-body)] font-semibold">
+        Accurx template automation
       </p>
     </div>
   );

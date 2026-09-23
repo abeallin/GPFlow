@@ -2,7 +2,7 @@ import { ipcMain, dialog, type IpcMainInvokeEvent } from 'electron';
 import type Database from 'better-sqlite3';
 import { importCsv } from '../../database/csv-import';
 import { getPractices } from '../../database/queries/practices';
-import { getSavedTemplates, saveTemplate, deleteTemplate } from '../../database/queries/templates';
+import { getSavedTemplates, saveTemplate, deleteTemplate, type NewSavedTemplate } from '../../database/queries/templates';
 import { getRuns, getRunSteps } from '../../database/queries/runs';
 import { isTrustedSender, type OriginPolicy } from '../security';
 
@@ -36,7 +36,7 @@ export function registerDatabaseHandlers(db: Database.Database, policy: OriginPo
 
   ipcMain.handle('db:get-saved-templates', (event) => { guard(event); return getSavedTemplates(db); });
 
-  ipcMain.handle('db:save-template', (event, template: any) => {
+  ipcMain.handle('db:save-template', (event, template: NewSavedTemplate) => {
     guard(event);
     return { id: saveTemplate(db, template) };
   });

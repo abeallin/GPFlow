@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    setupFiles: ['./tests/setup/jest-dom.ts'],
   },
   resolve: {
     alias: {

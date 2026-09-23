@@ -3,13 +3,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 type AccountsModule = typeof import('@/lib/accounts');
 
-async function loadAccounts(ipcFake: any): Promise<AccountsModule> {
+async function loadAccounts(ipcFake: unknown): Promise<AccountsModule> {
   vi.resetModules();
   vi.doMock('@/lib/ipc-client', () => ({ ipc: ipcFake }));
   return await import('@/lib/accounts');
 }
 
-function fakeIpc(overrides: Partial<Record<string, any>> = {}) {
+function fakeIpc(overrides: Record<string, unknown> = {}) {
   return {
     saveCredentials: vi.fn().mockResolvedValue(undefined),
     getCredentials: vi.fn().mockResolvedValue(null),

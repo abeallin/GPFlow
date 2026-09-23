@@ -5,7 +5,6 @@ import { Input } from './ui/Input';
 import { Textarea } from './ui/Textarea';
 import { Button } from './ui/Button';
 import { Toggle } from './ui/Toggle';
-import { Alert } from './ui/Alert';
 
 interface TemplateConfig {
   template_name: string;
@@ -19,7 +18,7 @@ interface TemplateFormProps {
   mode: 'create' | 'delete';
   onSubmit: (config: TemplateConfig) => void;
   practiceCount: number;
-  /** Disables the submit button while a run is being started. */
+  /** A run is being started: the submit shows its pending state and refuses a second press. */
   busy?: boolean;
 }
 
@@ -36,47 +35,53 @@ export function TemplateForm({ mode, onSubmit, practiceCount, busy = false }: Te
     onSubmit({ template_name: templateName, message, individual, batch, allow_respond: allowRespond });
   };
 
+  const nothingSelected = practiceCount === 0;
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 pt-2">
+    <form onSubmit={handleSubmit} noValidate className="space-y-6 pt-2">
       <Input
-        label="Template Name"
+        label="Template name"
+        hint={mode === 'delete' ? 'Only templates whose name matches exactly are deleted.' : undefined}
         value={templateName}
         onChange={(e) => setTemplateName(e.target.value)}
-        placeholder="Enter template name"
+        placeholder="e.g. Flu clinic 2026"
         required
+        autoComplete="off"
       />
 
       {mode === 'create' && (
         <>
           <Textarea
-            label="Message Body"
+            label="Message body"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Enter the template message"
+            placeholder="The message patients will receive"
             rows={4}
             required
           />
 
-          <div className="bg-bg-root rounded-xl p-4 space-y-4 border border-accent-subtle/30">
-            <p className="text-sm font-semibold text-text-secondary">Template Options</p>
+          <fieldset className="bg-bg-root rounded-xl p-4 space-y-4 border border-border m-0">
+            <legend className="text-sm font-semibold text-text-secondary px-1">Template options</legend>
             <div className="space-y-3">
               <Toggle checked={individual} onChange={setIndividual} label="Individual messaging" />
               <Toggle checked={batch} onChange={setBatch} label="Batch messaging" />
               <Toggle checked={allowRespond} onChange={setAllowRespond} label="Allow patients to respond" />
             </div>
-          </div>
+          </fieldset>
         </>
       )}
 
-      <Alert variant="info">
-        Will {mode} template &quot;{templateName || '...'}&quot; across <strong>{practiceCount}</strong> selected practices
-      </Alert>
+      <p className="text-sm text-text-secondary">
+        Will {mode} template “{templateName || '…'}” across <strong className="text-text-primary tabular-nums">{practiceCount}</strong> assigned practice{practiceCount === 1 ? '' : 's'}.
+      </p>
 
       <Button
         type="submit"
-        loading={busy}
-        aria-busy={busy}
-        className="w-full bg-accent hover:bg-accent-hover text-text-on-accent font-semibold glow-accent transition-all duration-200"
+        size="lg"
+        pending={busy}
+        pendingLabel="Starting…"
+        disabledReason={nothingSelected ? 'No assigned practices selected. Assign files to accounts on the Data page first.' : undefined}
+        className="w-full"
       >
         {mode === 'create' ? 'Bulk Create Template' : 'Bulk Delete Template'}
       </Button>

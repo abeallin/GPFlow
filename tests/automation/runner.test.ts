@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import type Database from 'better-sqlite3';
 import { createTestDatabase } from '../helpers/sqlite-adapter';
 import { createSchema } from '../../database/schema';
 import { upsertPractices } from '../../database/queries/practices';
 import { createRun, getRunSteps, completeRun, getRuns } from '../../database/queries/runs';
 
 describe('Run Flow Integration', () => {
-  let db: any;
+  let db: Database.Database;
 
   beforeEach(async () => {
     db = await createTestDatabase();

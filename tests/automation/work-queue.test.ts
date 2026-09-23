@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { WorkQueue } from '../../automation/work-queue';
-import { CancellationToken, CancellationError } from '../../automation/cancellation-token';
+import { CancellationToken } from '../../automation/cancellation-token';
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -136,14 +136,13 @@ describe('WorkQueue', () => {
       },
     });
     await queue.run();
-    for (const [item, count] of seen) {
+    for (const [, count] of seen) {
       expect(count).toBe(1);
     }
     expect(seen.size).toBe(50);
   });
 
   it('achieves approximate O(n/k) wall time with concurrency', async () => {
-    const token = new CancellationToken();
     const itemDelayMs = 20;
     const items = Array.from({ length: 12 }, (_, i) => i);
 

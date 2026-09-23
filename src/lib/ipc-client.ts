@@ -1,3 +1,5 @@
+import type { PracticeLike } from './assignments';
+import type { Run, SavedTemplate } from './types';
 /**
  * Renderer-side view of the Electron preload bridge.
  * This file is the single source of truth for the renderer ↔ main contract.
@@ -38,6 +40,8 @@ export interface ProgressEvent {
   total: number;
   practice: string;
   status: 'success' | 'failed' | 'skipped';
+  /** Present when status is 'failed'. */
+  error?: string;
   screenshotPath?: string;
   workerIndex?: number;
   accountLabel?: string;
@@ -63,6 +67,15 @@ export interface RunErrorEvent {
   error: string;
 }
 
+/** What the renderer supplies when saving a template; the database adds id and timestamps. */
+export type NewSavedTemplate = Omit<SavedTemplate, 'id' | 'created_at' | 'updated_at'>;
+
+export interface ChangeDetectedEvent {
+  action: string;
+  domHashChanged: boolean;
+  changes: unknown[];
+}
+
 export interface TwoFactorEvent {
   runId: number;
   accountLabel: string;
@@ -79,10 +92,10 @@ export interface ElectronAPI {
   // Database
   /** Opens a native file picker. The renderer can no longer supply a path. */
   importCsv: () => Promise<{ rowCount: number; errors: string[] }>;
-  getPractices: (filters?: Record<string, string>, sort?: { field: string; asc: boolean }) => Promise<any[]>;
-  getSavedTemplates: () => Promise<any[]>;
-  saveTemplate: (template: any) => Promise<{ id: number }>;
-  getRuns: (limit?: number, offset?: number) => Promise<any[]>;
+  getPractices: (filters?: Record<string, string>, sort?: { field: string; asc: boolean }) => Promise<PracticeLike[]>;
+  getSavedTemplates: () => Promise<SavedTemplate[]>;
+  saveTemplate: (template: NewSavedTemplate) => Promise<{ id: number }>;
+  getRuns: (limit?: number, offset?: number) => Promise<Run[]>;
   getImportFolder: () => Promise<string>;
   clearPractices: () => Promise<void>;
 
@@ -99,7 +112,7 @@ export interface ElectronAPI {
   on2faRequired: (callback: (event: TwoFactorEvent) => void) => void;
   onRunComplete: (callback: (event: RunCompleteEvent) => void) => void;
   onRunError: (callback: (event: RunErrorEvent) => void) => void;
-  onChangeDetected: (callback: (event: any) => void) => void;
+  onChangeDetected: (callback: (event: ChangeDetectedEvent) => void) => void;
   onPracticesUpdated: (callback: () => void) => void;
   removeAllListeners: (channel: string) => void;
 }

@@ -10,7 +10,7 @@ import { createSchema } from '../database/schema';
 import { importCsv } from '../database/csv-import';
 import { cleanupOldScreenshots } from '../automation/screenshots';
 import { initLogger, cleanupOldLogs, log } from './logger';
-import { isAllowedNavigation, type OriginPolicy } from './security';
+import { isAllowedNavigation, contentSecurityPolicy, inlineScriptHashes, type OriginPolicy } from './security';
 
 let mainWindow: BrowserWindow | null = null;
 let db: Database.Database | null = null;
@@ -152,6 +152,20 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   // Register protocol handler to serve Next.js static export
+  // HTML gets a strict CSP (packaged only: the dev server needs HMR and inline scripts).
+  // Next's export has inline bootstrap scripts, so each one is allowed by hash rather than
+  // by 'unsafe-inline'. Assets carry no policy; only documents do.
+  const htmlResponse = (file: string): Response => {
+    const body = fs.readFileSync(file);
+    const headers: Record<string, string> = { 'Content-Type': 'text/html' };
+    if (!isDev) {
+      headers['Content-Security-Policy'] = contentSecurityPolicy({
+        scriptHashes: inlineScriptHashes(body.toString('utf8')),
+      });
+    }
+    return new Response(body, { headers });
+  };
+
   protocol.handle(SCHEME, (request) => {
     const url = new URL(request.url);
     let filePath = decodeURIComponent(url.pathname);
@@ -164,17 +178,14 @@ app.whenReady().then(() => {
 
     if (!fs.existsSync(fullPath)) {
       const withIndex = path.join(OUT_DIR, filePath, 'index.html');
-      if (fs.existsSync(withIndex)) {
-        return new Response(fs.readFileSync(withIndex), { headers: { 'Content-Type': 'text/html' } });
-      }
+      if (fs.existsSync(withIndex)) return htmlResponse(withIndex);
       const withHtml = fullPath + '.html';
-      if (fs.existsSync(withHtml)) {
-        return new Response(fs.readFileSync(withHtml), { headers: { 'Content-Type': 'text/html' } });
-      }
+      if (fs.existsSync(withHtml)) return htmlResponse(withHtml);
       return new Response('Not Found', { status: 404 });
     }
 
     const ext = path.extname(fullPath).toLowerCase();
+    if (ext === '.html') return htmlResponse(fullPath);
     return new Response(fs.readFileSync(fullPath), {
       headers: { 'Content-Type': MIME[ext] || 'application/octet-stream' },
     });

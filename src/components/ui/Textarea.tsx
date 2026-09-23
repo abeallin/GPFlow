@@ -1,27 +1,25 @@
-import { type TextareaHTMLAttributes } from 'react';
+import { useId, type TextareaHTMLAttributes } from 'react';
+import { fieldClasses, FieldShell, useFieldIds } from './field';
 
 interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;
+  hint?: string;
   error?: string;
 }
 
-export function Textarea({ label, error, className = '', ...props }: TextareaProps) {
+export function Textarea({ label, hint, error, className = '', id, ...props }: TextareaProps) {
+  const autoId = useId();
+  const ids = useFieldIds(id ?? autoId, { hint, error });
+
   return (
-    <div className="space-y-1.5">
-      {label && (
-        <label className="block text-sm font-medium text-text-secondary">{label}</label>
-      )}
+    <FieldShell label={label} hint={hint} error={error} ids={ids}>
       <textarea
-        className={`w-full px-3 py-2.5 bg-bg-input border rounded-lg text-sm text-text-primary
-          transition-all duration-200 resize-y min-h-[100px]
-          placeholder:text-text-muted
-          hover:border-border-strong
-          focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent focus:shadow-[var(--shadow-glow)]
-          ${error ? 'border-error ring-2 ring-error/20' : 'border-border'}
-          ${className}`}
+        id={ids.control}
+        aria-describedby={ids.describedBy}
+        aria-invalid={error ? true : undefined}
+        className={`${fieldClasses(Boolean(error))} resize-y min-h-[100px] ${className}`}
         {...props}
       />
-      {error && <p className="text-xs text-error">{error}</p>}
-    </div>
+    </FieldShell>
   );
 }

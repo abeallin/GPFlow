@@ -29,7 +29,7 @@ describe('createTemplate', () => {
     const result = await createTemplate(page, template);
 
     expect(result.alreadyExists).toBe(true);
-    expect(await page.evaluate(() => (window as any).__saves)).toBe(0);
+    expect(await page.evaluate(() => (window as unknown as { __saves: number }).__saves)).toBe(0);
     expect(await remainingNames(page)).toEqual(['Flu']);
     await page.close();
   }, 30000);
@@ -41,7 +41,7 @@ describe('createTemplate', () => {
     const result = await createTemplate(page, template);
 
     expect(result.success).toBe(true);
-    expect(await page.evaluate(() => (window as any).__saves)).toBe(1);
+    expect(await page.evaluate(() => (window as unknown as { __saves: number }).__saves)).toBe(1);
     await page.close();
   }, 30000);
 });

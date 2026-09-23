@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import type Database from 'better-sqlite3';
 import { createTestDatabase } from '../helpers/sqlite-adapter';
 import { createSchema } from '../../database/schema';
 import { upsertPractices } from '../../database/queries/practices';
@@ -12,7 +13,7 @@ import {
 } from '../../database/queries/runs';
 
 describe('Runs Queries', () => {
-  let db: any;
+  let db: Database.Database;
 
   beforeEach(async () => {
     db = await createTestDatabase();
@@ -39,7 +40,7 @@ describe('Runs Queries', () => {
 
     const steps = getRunSteps(db, runId);
     expect(steps).toHaveLength(3);
-    expect(steps.map((s: any) => s.practice_id)).toEqual([1, 2, 3]);
+    expect(steps.map((s) => s.practice_id)).toEqual([1, 2, 3]);
   });
 
   it('getRunSteps returns steps ordered by id', () => {

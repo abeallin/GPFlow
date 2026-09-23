@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import type Database from 'better-sqlite3';
 import { createTestDatabase } from '../helpers/sqlite-adapter';
 import { createSchema } from '../../database/schema';
 import { createRun, getRunSteps, updateRunStep, completeRun, getRuns, getFailedPracticeIds } from '../../database/queries/runs';
@@ -10,14 +11,14 @@ const practices = [
 ];
 
 describe('run steps carry practice identity (no SQLite practices lookup needed)', () => {
-  let db: any;
+  let db: Database.Database;
   beforeEach(async () => { db = await createTestDatabase(); createSchema(db); });
   afterEach(() => db.close());
 
   it('createRun stores practice name and accurx_id on each step', () => {
     const runId = createRun(db, 'create', tpl, practices);
     const steps = getRunSteps(db, runId);
-    expect(steps.map((s: any) => [s.practice_id, s.practice_name, s.accurx_id])).toEqual([
+    expect(steps.map((s) => [s.practice_id, s.practice_name, s.accurx_id])).toEqual([
       [101, 'Park Surgery', 'AAA'],
       [102, 'Hill Practice', 'BBB'],
     ]);
@@ -33,7 +34,7 @@ describe('run steps carry practice identity (no SQLite practices lookup needed)'
         status TEXT NOT NULL DEFAULT 'pending', error_message TEXT, screenshot_path TEXT, dom_snapshot TEXT, completed_at TEXT, worker_index INTEGER);
     `);
     createSchema(legacy);
-    const cols = legacy.prepare('PRAGMA table_info(run_steps)').all().map((c: any) => c.name);
+    const cols = (legacy.prepare('PRAGMA table_info(run_steps)').all() as { name: string }[]).map((c) => c.name);
     expect(cols).toContain('practice_name');
     expect(cols).toContain('accurx_id');
     legacy.close();
@@ -41,7 +42,7 @@ describe('run steps carry practice identity (no SQLite practices lookup needed)'
 });
 
 describe('completeRun status', () => {
-  let db: any;
+  let db: Database.Database;
   beforeEach(async () => { db = await createTestDatabase(); createSchema(db); });
   afterEach(() => db.close());
 
@@ -63,7 +64,7 @@ describe('completeRun status', () => {
 });
 
 describe('getFailedPracticeIds', () => {
-  let db: any;
+  let db: Database.Database;
   beforeEach(async () => { db = await createTestDatabase(); createSchema(db); });
   afterEach(() => db.close());
 

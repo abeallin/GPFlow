@@ -3,6 +3,7 @@ import { cleanupOldScreenshots } from '../../automation/screenshots';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import type { Page } from 'playwright-core';
 
 describe('Screenshots', () => {
   let tmpDir: string;
@@ -64,7 +65,7 @@ describe('captureScreenshot filename safety', () => {
   it('writes a file even when the label contains path-hostile characters', async () => {
     const { captureScreenshot } = await import('../../automation/screenshots');
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gpflow-ss-'));
-    const fakePage = { screenshot: async ({ path: p }: { path: string }) => { fs.writeFileSync(p, 'png'); } } as any;
+    const fakePage = { screenshot: async ({ path: p }: { path: string }) => { fs.writeFileSync(p, 'png'); } } as unknown as Page;
 
     const file = await captureScreenshot(fakePage, tmp, 7, 3, 'w0-Park Surgery / Health: Centre?');
 

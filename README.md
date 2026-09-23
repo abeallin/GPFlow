@@ -32,11 +32,12 @@ GP Flow automates Accurx template management across GP practices. It runs as bot
 - Automatic retry with 3-second backoff
 
 ### UI
-- Premium dark theme with Instrument Serif + Manrope typography
-- Collapsible sidebar with state persistence
-- Glassmorphic cards, staggered animations, noise texture
-- Live progress feed during automation runs
-- Run history dashboard with stats
+- Dark theme with self-hosted Instrument Serif + Manrope (no third-party requests)
+- Confirmation dialogs for every bulk or destructive action, Cancel first and focused
+- WCAG 2.2 AA contrast tokens, keyboard-operable tables and tabs, skip link, live announcements
+- Toast stack for run start, completion and failures
+- Live progress feed and run history dashboard
+- House rules in `docs/ui-rules.md`, enforced by `tests/guards/` and ESLint
 
 ## Tech Stack
 
@@ -117,8 +118,15 @@ Set build command to `pnpm build:web` and start command to `pnpm start:web`. The
 | `pnpm install:browsers` | Install Playwright Chromium for development |
 | `pnpm bundle:browsers` | Download Chromium into `playwright-browsers/` for packaging (run by `package:*`) |
 | `pnpm typecheck` | TypeScript check across renderer, main and tests |
+| `pnpm lint` | ESLint (Next + jsx-a11y rules) |
 | `pnpm test` | Run all tests |
 | `pnpm test:watch` | Tests in watch mode |
+
+## UI rules
+
+`docs/ui-rules.md` is the visual and interaction standard (tokens, contrast, dialogs, unknown-vs-empty,
+feedback, keyboard, motion). `tests/guards/` scans `src/` for banned patterns and measures every text
+token's contrast; a hit fails the build.
 
 ## Renderer ↔ main contract
 
