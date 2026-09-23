@@ -87,29 +87,23 @@ async function loginViaNhsMail(page: Page, username: string, password: string, m
   await msEmailInput.first().fill(username);
   await page.locator('#idSIButton9').or(page.getByRole('button', { name: /^next$/i })).first().click();
 
-  // Microsoft: password
-  const msPasswordInput = page.locator('#i0118').or(page.locator('input[type="password"]'));
-  await msPasswordInput.first().waitFor({ state: 'visible', timeout: 15000 });
-  await msPasswordInput.first().fill(password);
+  // After "Next", Microsoft either asks for the password itself or federates the account
+  // to the NHS server (fs.nhs.net, ADFS). Wait for whichever form appears.
+  const landed = await waitForAny(page, {
+    microsoft: '#i0118',
+    adfsHrd: '#emailInput',
+    adfsLogin: '#passwordInput',
+  }, 20000);
 
-  const passwordPageUrl = page.url();
-  await page.locator('#idSIButton9').or(page.getByRole('button', { name: /sign in/i })).first().click();
-
-  // Microsoft reuses #idSIButton9 on every page, so never click it "again" blindly.
-  // Either the password page shows an error, or we leave it (KMSI prompt, MFA, or straight to Accurx).
-  const outcome = await Promise.race([
-    page.locator('#passwordError').filter({ visible: true }).first()
-      .waitFor({ state: 'visible', timeout: 20000 }).then(() => 'error' as const),
-    page.waitForURL((u) => u.toString() !== passwordPageUrl, { timeout: 20000 }).then(() => 'moved' as const),
-  ]).catch(() => 'stuck' as const);
-
-  if (outcome === 'error') {
-    const text = (await page.locator('#passwordError').first().innerText().catch(() => '')).trim();
-    return { success: false, requires2fa: false, error: text || 'Microsoft rejected the password' };
+  let failure: string | null = null;
+  if (landed === 'microsoft') {
+    failure = await submitMicrosoftPassword(page, password);
+  } else if (landed === 'adfsHrd' || landed === 'adfsLogin') {
+    failure = await submitAdfsLogin(page, username, password, landed === 'adfsHrd');
+  } else {
+    return { success: false, requires2fa: false, error: 'Neither the Microsoft nor the NHS sign-in form appeared after entering the email' };
   }
-  if (outcome === 'stuck') {
-    return { success: false, requires2fa: false, error: 'Microsoft sign-in did not proceed after submitting the password' };
-  }
+  if (failure) return { success: false, requires2fa: false, error: failure };
 
   // Everything after the password submit (KMSI prompt, MFA approval) shares one budget.
   const deadline = Date.now() + mfaTimeoutMs;
@@ -126,6 +120,76 @@ async function loginViaNhsMail(page: Page, username: string, password: string, m
   }
 
   return await waitForLoginResult(page, remaining(), 'Timed out waiting for NHSmail MFA approval');
+}
+
+/** Resolve with the key of the first selector to become visible, or null on timeout. */
+async function waitForAny<K extends string>(page: Page, selectors: Record<K, string>, timeoutMs: number): Promise<K | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const key of Object.keys(selectors) as K[]) {
+      if (await page.locator(selectors[key]).first().isVisible().catch(() => false)) return key;
+    }
+    await page.waitForTimeout(100);
+  }
+  return null;
+}
+
+/** Microsoft's own password page. Returns an error message, or null when we moved on. */
+async function submitMicrosoftPassword(page: Page, password: string): Promise<string | null> {
+  await page.locator('#i0118').first().fill(password);
+
+  const passwordPageUrl = page.url();
+  await page.locator('#idSIButton9').or(page.getByRole('button', { name: /sign in/i })).first().click();
+
+  // Microsoft reuses #idSIButton9 on every page, so never click it "again" blindly.
+  // Either the password page shows an error, or we leave it (KMSI prompt, MFA, or straight to Accurx).
+  const outcome = await Promise.race([
+    page.locator('#passwordError').filter({ visible: true }).first()
+      .waitFor({ state: 'visible', timeout: 20000 }).then(() => 'error' as const),
+    page.waitForURL((u) => u.toString() !== passwordPageUrl, { timeout: 20000 }).then(() => 'moved' as const),
+  ]).catch(() => 'stuck' as const);
+
+  if (outcome === 'error') {
+    const text = (await page.locator('#passwordError').first().innerText().catch(() => '')).trim();
+    return text || 'Microsoft rejected the password';
+  }
+  if (outcome === 'stuck') return 'Microsoft sign-in did not proceed after submitting the password';
+  return null;
+}
+
+/**
+ * The NHS federation server (fs.nhs.net/adfs/ls), captured 2026-09-23: a Home Realm
+ * Discovery step (#emailInput + Next) and then a login form (#userNameInput,
+ * #passwordInput, <span id="submitButton" role="button">). Errors render into
+ * <span id="errorText" role="alert">. Returns an error message, or null when we moved on.
+ */
+async function submitAdfsLogin(page: Page, username: string, password: string, atHrd: boolean): Promise<string | null> {
+  if (atHrd) {
+    await page.locator('#emailInput').fill(username);
+    await page.locator('input[name="HomeRealmByEmail"]').or(page.getByRole('button', { name: /^next$/i })).first().click();
+    await page.locator('#passwordInput').waitFor({ state: 'visible', timeout: 20000 });
+  }
+
+  const userField = page.locator('#userNameInput');
+  if (await userField.count() > 0 && !(await userField.inputValue().catch(() => ''))) {
+    await userField.fill(username);
+  }
+  await page.locator('#passwordInput').fill(password);
+
+  await page.locator('#submitButton').or(page.getByRole('button', { name: /sign in/i })).first().click();
+
+  const errorText = page.locator('#errorText').filter({ hasText: /\S/ });
+  const outcome = await Promise.race([
+    errorText.first().waitFor({ state: 'visible', timeout: 20000 }).then(() => 'error' as const),
+    page.waitForURL((u) => !u.toString().includes('fs.nhs.net'), { timeout: 20000 }).then(() => 'moved' as const),
+  ]).catch(() => 'stuck' as const);
+
+  if (outcome === 'error') {
+    const text = (await errorText.first().innerText().catch(() => '')).trim();
+    return text || 'The NHS sign-in server rejected the password';
+  }
+  if (outcome === 'stuck') return 'NHS sign-in did not proceed after submitting the password';
+  return null;
 }
 
 /** Wait for Accurx to finish login — inbox or its own 2FA page. */

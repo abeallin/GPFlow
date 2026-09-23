@@ -5,6 +5,7 @@ import { AutomationRunner, type EventSink } from '../../automation/runner';
 import { getFailedPracticeIds } from '../../database/queries/runs';
 import { createAutomationController, type AutomationController } from './automation-controller';
 import { isTrustedSender, type OriginPolicy } from '../security';
+import { log } from '../logger';
 
 let controller: AutomationController | null = null;
 
@@ -25,6 +26,10 @@ export function registerAutomationHandlers(
 ): AutomationController {
   const sink: EventSink = {
     send: (channel, payload) => {
+      // Run outcomes go to the app log too, so a failed run can be diagnosed after the fact.
+      if (channel === 'automation:error' || channel === 'automation:complete' || channel === 'automation:2fa-required') {
+        log(channel === 'automation:error' ? 'error' : 'info', channel, payload as Record<string, unknown>);
+      }
       const win = getWindow();
       if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
     },
