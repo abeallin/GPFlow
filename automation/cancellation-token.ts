@@ -3,8 +3,8 @@
  * Wraps any Promise with race() to enable sub-second cancellation
  * of Playwright operations that otherwise block for 30+ seconds.
  *
- * Complexity: All operations O(1). Listener drain on cancel is O(k)
- * where k = number of active waiters (bounded by concurrency).
+ * Listeners are removed as soon as the raced promise settles, so the
+ * listener list is bounded by the number of in-flight race() calls.
  */
 
 export class CancellationError extends Error {
@@ -32,13 +32,22 @@ export class CancellationToken {
     this._listeners = [];
   }
 
+  /** Number of race() calls still waiting on cancellation. Exposed for leak checks. */
+  get pendingWaiters(): number {
+    return this._listeners.length;
+  }
+
   /** Register a callback for when cancel() is called. If already cancelled, fires immediately. */
-  onCancel(fn: () => void): void {
+  onCancel(fn: () => void): () => void {
     if (this._cancelled) {
       fn();
-      return;
+      return () => {};
     }
     this._listeners.push(fn);
+    return () => {
+      const idx = this._listeners.indexOf(fn);
+      if (idx !== -1) this._listeners.splice(idx, 1);
+    };
   }
 
   /** Throws CancellationError if the token has been cancelled. */
@@ -64,16 +73,18 @@ export class CancellationToken {
         }
       };
 
-      this.onCancel(onCancel);
+      const unsubscribe = this.onCancel(onCancel);
 
       promise.then(
         (value) => {
+          unsubscribe();
           if (!settled) {
             settled = true;
             resolve(value);
           }
         },
         (error) => {
+          unsubscribe();
           if (!settled) {
             settled = true;
             reject(error);

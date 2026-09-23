@@ -1,88 +1,54 @@
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import type Database from 'better-sqlite3';
-import { AutomationRunner } from '../../automation/runner';
+import { AutomationRunner, type EventSink } from '../../automation/runner';
 import { getFailedPracticeIds } from '../../database/queries/runs';
-import type { ScreenshotMode } from '../../automation/screenshots';
+import { createAutomationController, type AutomationController } from './automation-controller';
+import { isTrustedSender, type OriginPolicy } from '../security';
 
-// Map of runner key → active runner. Supports concurrent runners (one per account).
-const activeRunners = new Map<string, { runner: AutomationRunner; runId: number }>();
-const startingKeys = new Set<string>(); // Guard against double-click race
+let controller: AutomationController | null = null;
 
-export function registerAutomationHandlers(mainWindow: BrowserWindow, db: Database.Database): void {
-  ipcMain.handle('automation:start', async (_event, config: {
-    type: 'create' | 'delete';
-    templateConfig: any;
-    practiceIds: number[];
-    screenshotMode: ScreenshotMode;
-    credentials: { username: string; password: string };
-    concurrency?: number;
-  }) => {
-    const key = config.credentials?.username || 'default';
-
-    if (activeRunners.has(key) || startingKeys.has(key)) {
-      throw new Error(`A run is already in progress for account: ${key}`);
-    }
-    startingKeys.add(key);
-
-    const runner = new AutomationRunner(mainWindow, db);
-
-    // Register BEFORE await so automation:stop can find the runner during execution
-    activeRunners.set(key, { runner, runId: 0 });
-
-    try {
-      const runId = await runner.run({
-
-        type: config.type,
-        templateConfig: config.templateConfig,
-        practiceIds: config.practiceIds,
-        screenshotMode: config.screenshotMode,
-        credentials: config.credentials,
-        concurrency: config.concurrency,
-      });
-      activeRunners.set(key, { runner, runId });
-      return { runId };
-    } finally {
-      startingKeys.delete(key);
-      activeRunners.delete(key);
-    }
-  });
-
-  ipcMain.handle('automation:stop', async (_event, { runId }: { runId?: number }) => {
-    if (runId) {
-      for (const [, entry] of activeRunners) {
-        // Check both the map entry and the runner's live runId
-        if (entry.runId === runId || entry.runner.currentRunId === runId) {
-          await entry.runner.stop();
-          return;
-        }
-      }
-    }
-    // Stop all runners
-    await Promise.allSettled(
-      [...activeRunners.values()].map((e) => e.runner.stop()),
-    );
-  });
-
-  ipcMain.handle('automation:retry-failed', async (_event, { runId }: { runId: number }) => {
-    const failedIds = getFailedPracticeIds(db, runId);
-    if (failedIds.length === 0) {
-      throw new Error('No failed practices to retry');
-    }
-    return { practiceIds: failedIds };
-  });
-
-  ipcMain.handle('automation:2fa-continue', async () => {
-    // 2FA completion is detected by URL change in the runner
-  });
-
-  ipcMain.handle('automation:active-runners', async () => {
-    return [...activeRunners.keys()];
-  });
+function guard(policy: OriginPolicy, event: IpcMainInvokeEvent): void {
+  if (!isTrustedSender(event.senderFrame?.url, policy)) {
+    throw new Error('Automation IPC rejected: untrusted sender');
+  }
 }
 
-/** Stop all active runners. Called on app quit to prevent orphaned browser processes. */
-export async function stopAllRunners(): Promise<void> {
-  await Promise.allSettled(
-    [...activeRunners.values()].map((e) => e.runner.stop()),
-  );
+/**
+ * @param getWindow resolves the current main window at send time, so events still
+ *                  reach a window recreated after `activate` on macOS.
+ */
+export function registerAutomationHandlers(
+  getWindow: () => BrowserWindow | null,
+  db: Database.Database,
+  policy: OriginPolicy,
+): AutomationController {
+  const sink: EventSink = {
+    send: (channel, payload) => {
+      const win = getWindow();
+      if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+    },
+  };
+
+  controller = createAutomationController({
+    sink,
+    makeRunner: () => new AutomationRunner(sink, db),
+    getFailedPracticeIds: (runId) => getFailedPracticeIds(db, runId),
+  });
+
+  const c = controller;
+
+  ipcMain.handle('automation:start', (event, config) => { guard(policy, event); return c.start(config); });
+  ipcMain.handle('automation:stop', (event, { runId }: { runId: number }) => { guard(policy, event); return c.stop(runId); });
+  ipcMain.handle('automation:stop-all', (event) => { guard(policy, event); return c.stopAll(); });
+  ipcMain.handle('automation:active-runs', (event) => { guard(policy, event); return c.activeRuns(); });
+  ipcMain.handle('automation:retry-failed', (event, { runId }: { runId: number }) => { guard(policy, event); return c.retryFailed(runId); });
+
+  return controller;
+}
+
+/** Stop all active runners and wait for them to finish writing. Called on app quit. */
+export async function shutdownAutomation(): Promise<void> {
+  if (!controller) return;
+  await controller.stopAll();
+  await controller.waitForAll();
 }

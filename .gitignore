@@ -33,3 +33,6 @@ Thumbs.db
 
 # VS Code
 .vscode/
+
+# Bundled Playwright browsers for packaging (pnpm bundle:browsers)
+playwright-browsers/

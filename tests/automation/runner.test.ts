@@ -23,7 +23,7 @@ describe('Run Flow Integration', () => {
   it('creates a run with steps for each practice', () => {
     const runId = createRun(db, 'create', {
       template_name: 'Test', message: 'Hello', individual: true, batch: false, allow_respond: false,
-    }, [1, 2]);
+    }, [{ id: 1, name: 'P1', accurx_id: 'X1' }, { id: 2, name: 'P2', accurx_id: 'X2' }]);
 
     const steps = getRunSteps(db, runId);
     expect(steps).toHaveLength(2);
@@ -33,7 +33,7 @@ describe('Run Flow Integration', () => {
   it('completes a run and calculates summary', () => {
     const runId = createRun(db, 'create', {
       template_name: 'Test', message: 'Hello', individual: true, batch: false, allow_respond: false,
-    }, [1, 2]);
+    }, [{ id: 1, name: 'P1', accurx_id: 'X1' }, { id: 2, name: 'P2', accurx_id: 'X2' }]);
 
     const steps = getRunSteps(db, runId);
 

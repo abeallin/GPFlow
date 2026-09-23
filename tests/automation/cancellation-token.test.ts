@@ -80,3 +80,14 @@ describe('CancellationToken', () => {
     await expect(token.race(Promise.reject(err))).rejects.toThrow('original');
   });
 });
+
+describe('CancellationToken.race listener hygiene', () => {
+  it('drops its cancel listener once the raced promise settles', async () => {
+    const token = new CancellationToken();
+    for (let i = 0; i < 100; i++) {
+      await token.race(Promise.resolve(i));
+    }
+    await token.race(Promise.reject(new Error('x'))).catch(() => {});
+    expect(token.pendingWaiters).toBe(0);
+  });
+});

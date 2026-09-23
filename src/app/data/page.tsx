@@ -11,6 +11,15 @@ import { DataTable } from '@/components/DataTable';
 import { CsvImporter } from '@/components/CsvImporter';
 import { ipc } from '@/lib/ipc-client';
 import { getAccounts, type Account } from '@/lib/accounts';
+import {
+  rebuildAssignments,
+  findCrossAccountDuplicates,
+  assignedAccountId,
+  allocatePracticeIds,
+  type Assignments,
+  type PracticeLike,
+} from '@/lib/assignments';
+import { readJson, isArray, isStringRecord } from '@/lib/storage';
 import { useRouter } from 'next/navigation';
 
 const STORAGE_KEY = 'gpflow_practices';
@@ -33,32 +42,16 @@ interface UploadedFile {
   accountId: string | null;
 }
 
-// Rebuild practices + assignments from stored data and file mappings
-function rebuildState(
-  allPractices: any[],
-  files: UploadedFile[],
-): { practices: any[]; assignments: Record<string, string> } {
-  const fileAccountMap = new Map<string, string>();
-  for (const f of files) {
-    if (f.accountId) fileAccountMap.set(f.fileName, f.accountId);
-  }
-
-  const assignments: Record<string, string> = {};
-  for (const p of allPractices) {
-    const accountId = fileAccountMap.get(p.source_file);
-    if (accountId && p.accurx_id) assignments[p.accurx_id] = accountId;
-  }
-
-  return { practices: allPractices, assignments };
-}
+const isUploadedFileArray = (v: unknown): v is UploadedFile[] =>
+  Array.isArray(v) && v.every((f) => typeof f === 'object' && f !== null && typeof (f as UploadedFile).fileName === 'string');
 
 export default function DataPage() {
-  const [practices, setPractices] = useState<any[]>([]);
+  const [practices, setPractices] = useState<PracticeLike[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  // Keyed by accurx_id (stable across ID changes) → account ID
-  const [assignments, setAssignments] = useState<Record<string, string>>({});
+  // Keyed by the composite practice key `${source_file}::${accurx_id}` → account ID
+  const [assignments, setAssignments] = useState<Assignments>({});
   const [activeAccount, setActiveAccount] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [showDuplicates, setShowDuplicates] = useState(false);
@@ -69,42 +62,42 @@ export default function DataPage() {
     setAccounts(getAccounts());
 
     // Restore files and assignments from localStorage (shared across modes)
-    const storedFiles = localStorage.getItem(FILES_KEY);
-    const storedAssign = localStorage.getItem(ASSIGNMENTS_KEY);
-    const assign = storedAssign ? JSON.parse(storedAssign) : {};
+    const files = readJson<UploadedFile[]>(localStorage, FILES_KEY, [], isUploadedFileArray);
+    const assign = readJson<Assignments>(localStorage, ASSIGNMENTS_KEY, {}, isStringRecord);
+    setUploadedFiles(files);
+    setAssignments(assign);
 
-    if (storedFiles) setUploadedFiles(JSON.parse(storedFiles));
-    if (storedAssign) setAssignments(assign);
-
-    const autoSelect = (practiceList: any[]) => {
+    const autoSelect = (practiceList: PracticeLike[]) => {
       const assignedIds = practiceList
-        .filter((p: any) => assign[p.accurx_id])
-        .map((p: any) => p.id);
+        .filter((p) => assignedAccountId(p, assign))
+        .map((p) => p.id);
       if (assignedIds.length > 0) setSelectedIds(assignedIds);
     };
 
     if (ipc) {
-      ipc.getPractices().then((data) => {
-        setPractices(data);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-        autoSelect(data);
+      const api = ipc;
+      api.getPractices().then((data) => {
+        const list: PracticeLike[] = Array.isArray(data) ? data : [];
+        setPractices(list);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+        autoSelect(list);
         setLoading(false);
       }).catch(() => {
         setLoading(false);
       });
-      ipc.onPracticesUpdated?.(() => {
-        ipc!.getPractices().then((data) => {
-          setPractices(data);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-        });
+      api.onPracticesUpdated?.(() => {
+        api.getPractices().then((data) => {
+          const list: PracticeLike[] = Array.isArray(data) ? data : [];
+          setPractices(list);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+        }).catch(() => {});
       });
-      return () => { ipc?.removeAllListeners('db:practices-updated'); };
+      return () => { api.removeAllListeners('db:practices-updated'); };
     } else {
       // Web mode: restore practices from localStorage
-      const storedPractices = localStorage.getItem(STORAGE_KEY);
-      const practices = storedPractices ? JSON.parse(storedPractices) : [];
-      if (practices.length) setPractices(practices);
-      autoSelect(practices);
+      const stored = readJson<PracticeLike[]>(localStorage, STORAGE_KEY, [], isArray);
+      if (stored.length) setPractices(stored);
+      autoSelect(stored);
       setLoading(false);
     }
   }, []);
@@ -126,9 +119,10 @@ export default function DataPage() {
         if (!byKey.has(key)) byKey.set(key, p);
       }
 
-      // Assign globally unique IDs to new practices
-      let nextId = Date.now();
-      const newPractices = [...byKey.values()].map((p) => ({ ...p, id: nextId++ }));
+      // Assign globally unique IDs from a persisted counter (never overlaps across drops)
+      const unique = [...byKey.values()];
+      const ids = allocatePracticeIds(unique.length, localStorage);
+      const newPractices = unique.map((p, i) => ({ ...p, id: ids[i] }));
 
       const merged = [...kept, ...newPractices];
       localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
@@ -169,7 +163,7 @@ export default function DataPage() {
 
       // Rebuild assignments based on file → account mapping
       setPractices((currentPractices) => {
-        const { assignments: newAssign } = rebuildState(currentPractices, updated);
+        const newAssign = rebuildAssignments(currentPractices, updated);
         setAssignments(newAssign);
         localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssign));
         return currentPractices;
@@ -193,7 +187,7 @@ export default function DataPage() {
 
       // Rebuild assignments
       setPractices((currentPractices) => {
-        const { assignments: newAssign } = rebuildState(currentPractices, updated);
+        const newAssign = rebuildAssignments(currentPractices, updated);
         setAssignments(newAssign);
         localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssign));
         return currentPractices;
@@ -220,24 +214,7 @@ export default function DataPage() {
   };
 
   // Find accurx_ids that appear in multiple accounts among selected practices
-  const getDuplicates = () => {
-    const selected = practices.filter((p) => selectedIds.includes(p.id));
-    const accurxToEntries = new Map<string, { id: number; accountId: string; name: string }[]>();
-
-    for (const p of selected) {
-      const accountId = assignments[p.accurx_id];
-      if (!accountId) continue;
-      if (!accurxToEntries.has(p.accurx_id)) accurxToEntries.set(p.accurx_id, []);
-      accurxToEntries.get(p.accurx_id)!.push({ id: p.id, accountId, name: p.name || p.accurx_id });
-    }
-
-    return [...accurxToEntries.entries()]
-      .filter(([, entries]) => {
-        const uniqueAccounts = new Set(entries.map((e) => e.accountId));
-        return uniqueAccounts.size > 1;
-      })
-      .map(([accurxId, entries]) => ({ accurxId, entries }));
-  };
+  const getDuplicates = () => findCrossAccountDuplicates(selectedIds, practices, assignments);
 
   // Auto-resolve: keep each accurx_id only in the first account, remove from others
   const autoResolveDuplicates = () => {
@@ -259,7 +236,7 @@ export default function DataPage() {
   // Helper: check if a practice (by id) is assigned to an account
   const isAssigned = (practiceId: number) => {
     const p = practices.find((pr) => pr.id === practiceId);
-    return p ? !!assignments[p.accurx_id] : false;
+    return p ? !!assignedAccountId(p, assignments) : false;
   };
 
   const handleContinue = () => {
@@ -285,9 +262,10 @@ export default function DataPage() {
     router.push('/templates');
   };
 
-  const assignedCount = Object.keys(assignments).length;
+  // Count assigned rows (not unique accurx_ids / keys)
+  const assignedCount = practices.filter((p) => assignedAccountId(p, assignments)).length;
   const practiceCountByAccount = (accountId: string) =>
-    Object.values(assignments).filter((id) => id === accountId).length;
+    practices.filter((p) => assignedAccountId(p, assignments) === accountId).length;
   const hasData = practices.length > 0;
   const duplicates = showDuplicates ? getDuplicates() : [];
   const assignedSelectedCount = selectedIds.filter((id) => isAssigned(id)).length;
@@ -390,6 +368,8 @@ export default function DataPage() {
                 </div>
 
                 <button
+                  type="button"
+                  aria-label={`Remove file ${file.fileName}`}
                   onClick={() => removeFile(file.fileName)}
                   className="p-1 rounded text-text-muted hover:text-error transition-colors shrink-0"
                 >
@@ -427,10 +407,10 @@ export default function DataPage() {
           </div>
 
           <div className="max-h-48 overflow-y-auto space-y-1.5">
-            {duplicates.map(({ accurxId, entries }) => (
+            {duplicates.map(({ accurxId, name, entries }) => (
               <div key={accurxId} className="flex items-center gap-3 text-xs bg-bg-root rounded-lg px-3 py-2">
                 <span className="font-mono text-text-secondary w-16 shrink-0">{accurxId}</span>
-                <span className="text-text-primary truncate flex-1">{entries[0].name}</span>
+                <span className="text-text-primary truncate flex-1">{name}</span>
                 <div className="flex gap-1 shrink-0">
                   {entries.map((e) => {
                     const account = accounts.find((a) => a.id === e.accountId);
@@ -521,7 +501,7 @@ export default function DataPage() {
             <DataTable
               practices={
                 activeAccount
-                  ? practices.filter((p) => assignments[p.accurx_id] === activeAccount)
+                  ? practices.filter((p) => assignedAccountId(p, assignments) === activeAccount)
                   : practices
               }
               selectedIds={selectedIds}

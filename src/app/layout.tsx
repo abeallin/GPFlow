@@ -10,6 +10,8 @@ import { useRouter } from 'next/navigation';
 import { LogoFull } from '@/components/ui/Logo';
 import { ipc } from '@/lib/ipc-client';
 
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? '0.0.0';
+
 const navItems = [
   { href: '/data', label: 'Data', icon: Database },
   { href: '/templates', label: 'Templates', icon: FileText },
@@ -135,7 +137,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="relative z-10 px-2 py-3 border-t border-border space-y-1">
             {!collapsed && (
               <div className="px-3 py-1">
-                <span className="text-[10px] font-mono text-text-muted">v8.0.0</span>
+                <span className="text-[10px] font-mono text-text-muted">v{APP_VERSION}</span>
               </div>
             )}
             <button

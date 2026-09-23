@@ -66,21 +66,5 @@ export interface LicenseCache {
   validated_at: string;
 }
 
-// IPC event types
-export interface ProgressEvent {
-  runId: number;
-  step: number;
-  total: number;
-  practice: string;
-  status: 'success' | 'failed' | 'skipped';
-  screenshotPath?: string;
-  timestamp: string;
-}
-
-export interface RunSummary {
-  runId: number;
-  totalCount: number;
-  successCount: number;
-  failCount: number;
-  duration: number;
-}
+// IPC event types — single source of truth is ipc-client.ts
+export type { ProgressEvent, RunSummary } from './ipc-client';

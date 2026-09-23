@@ -2,25 +2,16 @@
 
 import { useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, XCircle, SkipForward } from 'lucide-react';
+import { CheckCircle, XCircle, SkipForward, Play } from 'lucide-react';
 import { ProgressBar } from './ui/ProgressBar';
 import { EmptyState } from './ui/EmptyState';
-import { Play } from 'lucide-react';
-
-interface ProgressEvent {
-  runId: number;
-  step: number;
-  total: number;
-  practice: string;
-  status: 'success' | 'failed' | 'skipped';
-  screenshotPath?: string;
-  accountLabel?: string;
-  timestamp: string;
-}
+import type { ProgressEvent } from '@/lib/ipc-client';
+import type { RunProgress } from '@/hooks/useAutomationProgress';
 
 interface ProgressFeedProps {
   events: ProgressEvent[];
-  total: number;
+  /** One entry per run; each gets its own bar so counts never mix across runs. */
+  progress: RunProgress[];
 }
 
 const statusConfig = {
@@ -29,7 +20,7 @@ const statusConfig = {
   skipped: { icon: SkipForward, color: 'text-warning', bg: 'bg-warning/10', border: 'border-l-warning' },
 };
 
-export function ProgressFeed({ events, total }: ProgressFeedProps) {
+export function ProgressFeed({ events, progress }: ProgressFeedProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -38,7 +29,7 @@ export function ProgressFeed({ events, total }: ProgressFeedProps) {
     }
   }, [events.length]);
 
-  if (events.length === 0) {
+  if (events.length === 0 && progress.length === 0) {
     return (
       <EmptyState
         icon={<Play />}
@@ -50,14 +41,28 @@ export function ProgressFeed({ events, total }: ProgressFeedProps) {
 
   return (
     <div className="space-y-4">
-      <ProgressBar current={events.length} total={total} animate={events.length < total} />
+      <div className="space-y-3">
+        {progress.map((run) => (
+          <div key={run.runId} data-testid={`run-progress-${run.runId}`} className="space-y-1">
+            <div className="flex items-center gap-2 text-xs text-text-muted">
+              <span className="font-mono">Run #{run.runId}</span>
+              {run.accountLabel && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/10 text-accent border border-accent/20">
+                  {run.accountLabel}
+                </span>
+              )}
+            </div>
+            <ProgressBar current={run.done} total={run.total} animate={run.done < run.total} />
+          </div>
+        ))}
+      </div>
       <div ref={scrollRef} className="max-h-96 overflow-y-auto space-y-2 pr-1">
         <AnimatePresence initial={false}>
           {events.map((event, i) => {
-            const { icon: Icon, color, bg, border } = statusConfig[event.status];
+            const { icon: Icon, color, bg, border } = statusConfig[event.status] ?? statusConfig.skipped;
             return (
               <motion.div
-                key={i}
+                key={`${event.runId}-${event.step}-${i}`}
                 initial={{ opacity: 0, x: -16 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.25, ease: 'easeOut' }}

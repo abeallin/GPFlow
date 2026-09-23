@@ -1,14 +1,16 @@
-import { app, BrowserWindow, protocol, ipcMain } from 'electron';
+import './bootstrap-env'; // must stay first — see file
+import { app, BrowserWindow, protocol, ipcMain, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import Database from 'better-sqlite3';
 import { registerAuthHandlers } from './ipc/auth';
 import { registerDatabaseHandlers } from './ipc/database';
-import { registerAutomationHandlers, stopAllRunners } from './ipc/automation';
+import { registerAutomationHandlers, shutdownAutomation } from './ipc/automation';
 import { createSchema } from '../database/schema';
 import { importCsv } from '../database/csv-import';
 import { cleanupOldScreenshots } from '../automation/screenshots';
-import { initLogger, cleanupOldLogs } from './logger';
+import { initLogger, cleanupOldLogs, log } from './logger';
+import { isAllowedNavigation, type OriginPolicy } from './security';
 
 let mainWindow: BrowserWindow | null = null;
 let db: Database.Database | null = null;
@@ -16,6 +18,10 @@ let importWatcher: fs.FSWatcher | null = null;
 
 const SCHEME = 'gpflow';
 const OUT_DIR = path.join(__dirname, '../out');
+const DEV_ORIGIN = 'http://localhost:3000';
+
+const isDev = process.env.NODE_ENV === 'development' || !fs.existsSync(path.join(OUT_DIR, 'index.html'));
+const policy: OriginPolicy = { devOrigin: isDev ? DEV_ORIGIN : null };
 
 // MIME types for static file serving
 const MIME: Record<string, string> = {
@@ -74,29 +80,26 @@ function autoImportCsvFiles() {
     const filePath = path.join(importDir, file);
     try {
       const result = importCsv(db, filePath);
-      // Move to processed folder
       const destPath = path.join(processedDir, `${Date.now()}_${file}`);
       fs.renameSync(filePath, destPath);
+      log('info', `Auto-imported ${file}: ${result.rowCount} rows, ${result.errors.length} warnings`);
 
-      if (result.rowCount > 0 && mainWindow) {
+      if (result.rowCount > 0 && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('db:practices-updated');
       }
-    } catch {
-      // Leave file in place if import fails
+    } catch (err) {
+      log('error', `Auto-import of ${file} failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }
 
 function startImportWatcher() {
   ensureImportDirs();
-
-  // Import any existing files on startup
   autoImportCsvFiles();
 
-  // Watch for new files (debounced to prevent duplicate events)
   const importDir = getImportDir();
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  importWatcher = fs.watch(importDir, (eventType, filename) => {
+  importWatcher = fs.watch(importDir, (_eventType, filename) => {
     if (filename && filename.toLowerCase().endsWith('.csv')) {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => autoImportCsvFiles(), 500);
@@ -104,8 +107,8 @@ function startImportWatcher() {
   });
 }
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
+function createWindow(): BrowserWindow {
+  const win = new BrowserWindow({
     width: 1024,
     height: 768,
     minWidth: 800,
@@ -122,18 +125,29 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
 
-  const isDev = process.env.NODE_ENV === 'development' || !require('fs').existsSync(path.join(__dirname, '../out/index.html'));
+  // The preload bridge exposes credentials; never let the window navigate anywhere else.
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!isAllowedNavigation(url, policy)) {
+      event.preventDefault();
+      log('warn', `Blocked navigation to ${url}`);
+    }
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) shell.openExternal(url).catch(() => {});
+    return { action: 'deny' };
+  });
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:3000');
-    // DevTools: uncomment the line below to debug
-    // mainWindow.webContents.openDevTools();
+    win.loadURL(DEV_ORIGIN);
   } else {
-    mainWindow.loadURL(`${SCHEME}://app/`);
+    win.loadURL(`${SCHEME}://app/`);
   }
+  mainWindow = win;
+  return win;
 }
 
 app.whenReady().then(() => {
@@ -142,34 +156,21 @@ app.whenReady().then(() => {
     const url = new URL(request.url);
     let filePath = decodeURIComponent(url.pathname);
 
-    // Remove leading slash
     if (filePath.startsWith('/')) filePath = filePath.slice(1);
-
-    // Default to index.html
-    if (!filePath || filePath.endsWith('/')) {
-      filePath = filePath + 'index.html';
-    }
+    if (!filePath || filePath.endsWith('/')) filePath = filePath + 'index.html';
 
     const fullPath = path.join(OUT_DIR, filePath);
+    if (!fullPath.startsWith(OUT_DIR)) return new Response('Forbidden', { status: 403 });
 
-    // If file doesn't exist and no extension, try as directory with index.html
     if (!fs.existsSync(fullPath)) {
       const withIndex = path.join(OUT_DIR, filePath, 'index.html');
       if (fs.existsSync(withIndex)) {
-        const ext = path.extname('index.html');
-        return new Response(fs.readFileSync(withIndex), {
-          headers: { 'Content-Type': MIME[ext] || 'application/octet-stream' },
-        });
+        return new Response(fs.readFileSync(withIndex), { headers: { 'Content-Type': 'text/html' } });
       }
-
-      // Try with .html extension (for routes like /data -> /data.html)
       const withHtml = fullPath + '.html';
       if (fs.existsSync(withHtml)) {
-        return new Response(fs.readFileSync(withHtml), {
-          headers: { 'Content-Type': 'text/html' },
-        });
+        return new Response(fs.readFileSync(withHtml), { headers: { 'Content-Type': 'text/html' } });
       }
-
       return new Response('Not Found', { status: 404 });
     }
 
@@ -179,45 +180,49 @@ app.whenReady().then(() => {
     });
   });
 
-  // Initialize database
+  initLogger(app.getPath('userData'));
+  cleanupOldLogs();
+
   const dbPath = path.join(app.getPath('userData'), 'gpflow.db');
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   createSchema(db);
 
-  // Recover orphaned runs from previous crashes
-  db.prepare(`UPDATE runs SET status = 'failed', completed_at = datetime('now') WHERE status = 'running'`).run();
+  // Recover runs orphaned by a crash: their untouched steps become retryable.
+  const orphaned = db.prepare(`SELECT id FROM runs WHERE status = 'running'`).all() as { id: number }[];
+  for (const { id } of orphaned) {
+    db.prepare(`UPDATE run_steps SET status = 'failed', error_message = 'App closed during run' WHERE run_id = ? AND status = 'pending'`).run(id);
+    db.prepare(`UPDATE runs SET status = 'failed', completed_at = datetime('now') WHERE id = ?`).run(id);
+  }
+  if (orphaned.length) log('warn', `Recovered ${orphaned.length} orphaned run(s)`);
 
-  initLogger(app.getPath('userData'));
-  cleanupOldLogs();
+  const win = createWindow();
 
-  createWindow();
+  registerAuthHandlers(db, policy);
+  registerDatabaseHandlers(db, policy);
+  registerAutomationHandlers(() => mainWindow, db, policy);
 
-  // Register IPC handlers
-  registerAuthHandlers(db);
-  registerDatabaseHandlers(db);
-  registerAutomationHandlers(mainWindow!, db);
-
-  // Import folder handler
   ipcMain.handle('db:get-import-folder', () => getImportDir());
 
-  // Start watching import folder for CSVs
   startImportWatcher();
+  cleanupOldScreenshots(path.join(app.getPath('userData'), 'screenshots'));
 
-  // Cleanup old screenshots on startup
-  const screenshotPath = path.join(app.getPath('userData'), 'screenshots');
-  cleanupOldScreenshots(screenshotPath);
+  log('info', `GP Flow started (${isDev ? 'dev' : 'packaged'}), browsers: ${process.env.PLAYWRIGHT_BROWSERS_PATH ?? 'default cache'}`);
+  void win;
 });
 
+let quitting = false;
 app.on('window-all-closed', async () => {
-  // Stop any active automation runners to prevent orphaned browser processes
-  await stopAllRunners();
+  if (quitting) return;
+  quitting = true;
+  // Let in-flight runs cancel and finish writing before the DB is closed.
+  await shutdownAutomation();
   if (importWatcher) importWatcher.close();
-  if (db) db.close();
-  if (process.platform !== 'darwin') app.quit();
+  if (db) { db.close(); db = null; }
+  app.quit();
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (BrowserWindow.getAllWindows().length === 0 && db) createWindow();
 });

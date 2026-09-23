@@ -6,6 +6,8 @@ import { User, Lock, Trash2, Plus, ArrowRight, Eye, EyeOff } from 'lucide-react'
 import { LogoHero } from './ui/Logo';
 import { type Account, getAccounts, addAccount, removeAccount, allPasswordsReady } from '@/lib/accounts';
 
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? '0.0.0';
+
 interface LoginFormProps {
   onSuccess: () => void;
 }
@@ -42,7 +44,13 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       return;
     }
 
-    await addAccount(username.trim(), password);
+    try {
+      await addAccount(username.trim(), password);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save credentials');
+      setAccounts(getAccounts());
+      return;
+    }
 
     setAccounts(getAccounts());
     setUsername('');
@@ -52,8 +60,12 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     allPasswordsReady().then(setPasswordsReady);
   };
 
-  const handleRemove = (id: string) => {
-    removeAccount(id);
+  const handleRemove = async (id: string) => {
+    try {
+      await removeAccount(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove stored credentials');
+    }
     const remaining = getAccounts();
     setAccounts(remaining);
     if (remaining.length === 0) setShowForm(true);
@@ -125,6 +137,8 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                       </div>
                     </div>
                     <button
+                      type="button"
+                      aria-label={`Remove account ${account.label}`}
                       onClick={() => handleRemove(account.id)}
                       className="p-1.5 rounded-lg text-text-muted hover:text-error hover:bg-error/10 transition-colors shrink-0"
                     >
@@ -190,6 +204,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                     />
                     <button
                       type="button"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors"
                     >
@@ -247,7 +262,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           transition={{ delay: 0.6, duration: 0.4 }}
           className="mt-10 text-center text-text-muted/40 text-xs font-mono"
         >
-          v8.0.0
+          v{APP_VERSION}
         </motion.p>
       </motion.div>
     </div>

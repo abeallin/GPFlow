@@ -1,4 +1,5 @@
 import type { Page } from 'playwright-core';
+import { exactTemplateRows } from './delete-template';
 
 export interface TemplateConfig {
   template_name: string;
@@ -14,29 +15,38 @@ export interface CreateTemplateResult {
   error?: string;
 }
 
+export interface CreateTemplateOptions {
+  /** Timeout for each UI wait (list render, form, save). */
+  timeoutMs?: number;
+}
+
 export async function createTemplate(
   page: Page,
   template: TemplateConfig,
+  opts: CreateTemplateOptions = {},
 ): Promise<CreateTemplateResult> {
+  const timeoutMs = opts.timeoutMs ?? 10000;
   try {
-    // Use filter API to avoid CSS selector injection from template names with quotes
-    const existingRow = page.locator('tr').filter({ hasText: template.template_name });
-    const exists = await existingRow.count() > 0;
+    // The list is rendered client-side after load. The "Create template" link is part of
+    // the same view, so once it is visible the existing rows have been rendered too.
+    const createLink = page.getByRole('link', { name: /create template/i })
+      .or(page.locator('a[href*="templates/create"]'));
+    await createLink.first().waitFor({ state: 'visible', timeout: timeoutMs });
 
-    if (exists) {
+    // Exact (trimmed, case-sensitive) name match — never a substring match.
+    if (await exactTemplateRows(page, template.template_name).count() > 0) {
       return { success: false, alreadyExists: true };
     }
 
-    const createLink = page.getByRole('link', { name: /create template/i })
-      .or(page.locator('a[href*="templates/create"]'));
-    await createLink.click();
+    await createLink.first().click();
 
-    const nameInput = page.getByLabel(/template name/i).or(page.locator('#templateName'));
-    await nameInput.waitFor({ state: 'visible' });
-    await nameInput.fill(template.template_name);
+    const nameInput = page.getByLabel(/^template name$/i).or(page.locator('#templateName'));
+    await nameInput.first().waitFor({ state: 'visible', timeout: timeoutMs });
+    await nameInput.first().fill(template.template_name);
 
-    const messageInput = page.getByLabel(/message/i).or(page.locator('#message'));
-    await messageInput.fill(template.message);
+    // "Allow patients to respond to this message" also matches /message/i, so anchor the label.
+    const messageInput = page.locator('#message').or(page.getByLabel(/^message( body)?$/i));
+    await messageInput.first().fill(template.message);
 
     await setCheckbox(page, '#sendViaIndividualMessaging', template.individual);
     await setCheckbox(page, '#sendViaBatchMessaging', template.batch);
@@ -44,16 +54,11 @@ export async function createTemplate(
 
     const saveButton = page.getByRole('button', { name: /save/i })
       .or(page.locator('button[type="submit"]'));
-    await saveButton.click();
+    await saveButton.first().click();
 
-    // Verify creation: wait for redirect back to template list or success indicator
-    try {
-      await page.waitForURL(/templates\?tab/, { timeout: 10000 });
-    } catch {
-      // Fallback: check if template now appears in the list
-      const created = page.locator('tr').filter({ hasText: template.template_name });
-      await created.waitFor({ state: 'visible', timeout: 5000 });
-    }
+    // Verify creation: the new row must appear in the list (URL alone is not proof).
+    await exactTemplateRows(page, template.template_name).first()
+      .waitFor({ state: 'visible', timeout: timeoutMs });
 
     return { success: true, alreadyExists: false };
   } catch (error) {
@@ -67,6 +72,7 @@ export async function createTemplate(
 
 async function setCheckbox(page: Page, selector: string, shouldBeChecked: boolean): Promise<void> {
   const checkbox = page.locator(selector);
+  if (await checkbox.count() === 0) return;
   const isChecked = await checkbox.isChecked();
   if (isChecked !== shouldBeChecked) {
     await checkbox.click();

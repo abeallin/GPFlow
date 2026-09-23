@@ -33,7 +33,7 @@ export function Alert({ variant, title, children, onDismiss }: AlertProps) {
         <div className="text-sm text-text-secondary">{children}</div>
       </div>
       {onDismiss && (
-        <button onClick={onDismiss} className="shrink-0 text-text-muted hover:text-text-primary transition-colors">
+        <button type="button" aria-label="Dismiss" onClick={onDismiss} className="shrink-0 text-text-muted hover:text-text-primary transition-colors">
           <X className="w-4 h-4" />
         </button>
       )}

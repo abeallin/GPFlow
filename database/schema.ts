@@ -35,7 +35,9 @@ export function createSchema(db: Database.Database): void {
       screenshot_path TEXT,
       dom_snapshot TEXT,
       completed_at TEXT,
-      worker_index INTEGER
+      worker_index INTEGER,
+      practice_name TEXT,
+      accurx_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS page_snapshots (
@@ -81,6 +83,14 @@ export function createSchema(db: Database.Database): void {
   if (!columns('run_steps').has('worker_index')) {
     db.exec('ALTER TABLE run_steps ADD COLUMN worker_index INTEGER');
   }
+  // Steps carry the practice identity so runs never depend on the practices table
+  // (renderer-imported practices live in localStorage, not SQLite).
+  if (!columns('run_steps').has('practice_name')) {
+    db.exec('ALTER TABLE run_steps ADD COLUMN practice_name TEXT');
+  }
+  if (!columns('run_steps').has('accurx_id')) {
+    db.exec('ALTER TABLE run_steps ADD COLUMN accurx_id TEXT');
+  }
 
   // Remove FK constraint on run_steps.practice_id (practices may come from localStorage)
   const fks = db.prepare('PRAGMA foreign_key_list(run_steps)').all() as { table: string }[];
@@ -97,9 +107,12 @@ export function createSchema(db: Database.Database): void {
         screenshot_path TEXT,
         dom_snapshot TEXT,
         completed_at TEXT,
-        worker_index INTEGER
+        worker_index INTEGER,
+        practice_name TEXT,
+        accurx_id TEXT
       );
-      INSERT INTO run_steps_new SELECT id, run_id, practice_id, status, error_message, screenshot_path, dom_snapshot, completed_at, worker_index FROM run_steps;
+      INSERT INTO run_steps_new (id, run_id, practice_id, status, error_message, screenshot_path, dom_snapshot, completed_at, worker_index)
+        SELECT id, run_id, practice_id, status, error_message, screenshot_path, dom_snapshot, completed_at, worker_index FROM run_steps;
       DROP TABLE run_steps;
       ALTER TABLE run_steps_new RENAME TO run_steps;
       CREATE INDEX IF NOT EXISTS idx_run_steps_run_id ON run_steps(run_id);

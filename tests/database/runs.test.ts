@@ -29,7 +29,7 @@ describe('Runs Queries', () => {
   });
 
   it('createRun inserts a run and its steps', () => {
-    const runId = createRun(db, 'create', { template_name: 'T1' }, [1, 2, 3]);
+    const runId = createRun(db, 'create', { template_name: 'T1' }, [{ id: 1, name: 'P1', accurx_id: 'X1' }, { id: 2, name: 'P2', accurx_id: 'X2' }, { id: 3, name: 'P3', accurx_id: 'X3' }]);
     expect(runId).toBeGreaterThan(0);
 
     const run = db.prepare('SELECT * FROM runs WHERE id = ?').get(runId);
@@ -43,14 +43,14 @@ describe('Runs Queries', () => {
   });
 
   it('getRunSteps returns steps ordered by id', () => {
-    const runId = createRun(db, 'delete', { template_name: 'T2' }, [3, 1]);
+    const runId = createRun(db, 'delete', { template_name: 'T2' }, [{ id: 3, name: 'P3', accurx_id: 'X3' }, { id: 1, name: 'P1', accurx_id: 'X1' }]);
     const steps = getRunSteps(db, runId);
     expect(steps).toHaveLength(2);
     expect(steps[0].id).toBeLessThan(steps[1].id);
   });
 
   it('updateRunStep sets status and optional fields', () => {
-    const runId = createRun(db, 'create', { template_name: 'T1' }, [1]);
+    const runId = createRun(db, 'create', { template_name: 'T1' }, [{ id: 1, name: 'P1', accurx_id: 'X1' }]);
     const steps = getRunSteps(db, runId);
     const stepId = steps[0].id;
 
@@ -65,7 +65,7 @@ describe('Runs Queries', () => {
   });
 
   it('updateRunStep sets null for missing optional fields', () => {
-    const runId = createRun(db, 'create', { template_name: 'T1' }, [1]);
+    const runId = createRun(db, 'create', { template_name: 'T1' }, [{ id: 1, name: 'P1', accurx_id: 'X1' }]);
     const steps = getRunSteps(db, runId);
 
     updateRunStep(db, steps[0].id, 'success');
@@ -77,7 +77,7 @@ describe('Runs Queries', () => {
   });
 
   it('completeRun marks run as completed when all succeed', () => {
-    const runId = createRun(db, 'create', { template_name: 'T1' }, [1, 2]);
+    const runId = createRun(db, 'create', { template_name: 'T1' }, [{ id: 1, name: 'P1', accurx_id: 'X1' }, { id: 2, name: 'P2', accurx_id: 'X2' }]);
     const steps = getRunSteps(db, runId);
 
     updateRunStep(db, steps[0].id, 'success');
@@ -93,7 +93,7 @@ describe('Runs Queries', () => {
   });
 
   it('completeRun marks run as completed when at least one step succeeds', () => {
-    const runId = createRun(db, 'create', { template_name: 'T1' }, [1, 2]);
+    const runId = createRun(db, 'create', { template_name: 'T1' }, [{ id: 1, name: 'P1', accurx_id: 'X1' }, { id: 2, name: 'P2', accurx_id: 'X2' }]);
     const steps = getRunSteps(db, runId);
 
     updateRunStep(db, steps[0].id, 'success');
@@ -107,7 +107,7 @@ describe('Runs Queries', () => {
   });
 
   it('completeRun marks run as failed when ALL steps fail', () => {
-    const runId = createRun(db, 'create', { template_name: 'T1' }, [1, 2]);
+    const runId = createRun(db, 'create', { template_name: 'T1' }, [{ id: 1, name: 'P1', accurx_id: 'X1' }, { id: 2, name: 'P2', accurx_id: 'X2' }]);
     const steps = getRunSteps(db, runId);
 
     updateRunStep(db, steps[0].id, 'failed', 'timeout');
@@ -121,9 +121,9 @@ describe('Runs Queries', () => {
   });
 
   it('getRuns returns runs ordered by started_at DESC with limit/offset', () => {
-    createRun(db, 'create', { template_name: 'T1' }, [1]);
-    createRun(db, 'delete', { template_name: 'T2' }, [2]);
-    createRun(db, 'create', { template_name: 'T3' }, [3]);
+    createRun(db, 'create', { template_name: 'T1' }, [{ id: 1, name: 'P1', accurx_id: 'X1' }]);
+    createRun(db, 'delete', { template_name: 'T2' }, [{ id: 2, name: 'P2', accurx_id: 'X2' }]);
+    createRun(db, 'create', { template_name: 'T3' }, [{ id: 3, name: 'P3', accurx_id: 'X3' }]);
 
     const all = getRuns(db);
     expect(all).toHaveLength(3);
@@ -136,7 +136,7 @@ describe('Runs Queries', () => {
   });
 
   it('getFailedPracticeIds returns only failed practice ids', () => {
-    const runId = createRun(db, 'create', { template_name: 'T1' }, [1, 2, 3]);
+    const runId = createRun(db, 'create', { template_name: 'T1' }, [{ id: 1, name: 'P1', accurx_id: 'X1' }, { id: 2, name: 'P2', accurx_id: 'X2' }, { id: 3, name: 'P3', accurx_id: 'X3' }]);
     const steps = getRunSteps(db, runId);
 
     updateRunStep(db, steps[0].id, 'success');

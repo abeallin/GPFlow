@@ -7,7 +7,9 @@ import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { EmptyState } from './ui/EmptyState';
 import { Skeleton } from './ui/Skeleton';
+import { Alert } from './ui/Alert';
 import { ipc } from '@/lib/ipc-client';
+import { useRouter } from 'next/navigation';
 
 interface Run {
   id: number;
@@ -21,14 +23,38 @@ interface Run {
 export function RunHistory() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<number | null>(null);
+  const router = useRouter();
 
   const loadRuns = async () => {
     setLoading(true);
-    if (ipc) {
-      const data = await ipc.getRuns(50, 0);
-      setRuns(data);
+    setError(null);
+    try {
+      if (ipc) {
+        const data = await ipc.getRuns(50, 0);
+        setRuns(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load run history');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  const handleRetry = async (runId: number) => {
+    if (!ipc) return;
+    setError(null);
+    setRetryingId(runId);
+    try {
+      const { practiceIds } = await ipc.retryFailed(runId);
+      sessionStorage.setItem('selectedPracticeIds', JSON.stringify(practiceIds));
+      router.push('/templates');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to prepare retry');
+    } finally {
+      setRetryingId(null);
+    }
   };
 
   useEffect(() => { loadRuns(); }, []);
@@ -52,16 +78,20 @@ export function RunHistory() {
 
   if (runs.length === 0) {
     return (
-      <EmptyState
-        icon={<FileText />}
-        title="No runs yet"
-        description="Start a template operation to see your run history here."
-      />
+      <div className="space-y-3">
+        {error && <Alert variant="error" title="Run history unavailable" onDismiss={() => setError(null)}>{error}</Alert>}
+        <EmptyState
+          icon={<FileText />}
+          title="No runs yet"
+          description="Start a template operation to see your run history here."
+        />
+      </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {error && <Alert variant="error" title="Something went wrong" onDismiss={() => setError(null)}>{error}</Alert>}
       {runs.map((run) => (
         <Card key={run.id} variant="elevated" className="p-4 bg-bg-raised border border-border-subtle hover:border-border transition-colors duration-200">
           <div className="flex items-center justify-between">
@@ -76,11 +106,13 @@ export function RunHistory() {
               </p>
             </div>
             {run.fail_count > 0 && run.status !== 'running' && (
-              <Button variant="secondary" size="sm" icon={<RotateCw className="w-3.5 h-3.5" />} onClick={async () => {
-                if (!ipc) return;
-                const { practiceIds } = await ipc.retryFailed(run.id);
-                sessionStorage.setItem('selectedPracticeIds', JSON.stringify(practiceIds));
-              }}>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<RotateCw className="w-3.5 h-3.5" />}
+                loading={retryingId === run.id}
+                onClick={() => handleRetry(run.id)}
+              >
                 Retry
               </Button>
             )}

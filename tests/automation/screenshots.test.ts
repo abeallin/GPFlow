@@ -59,3 +59,18 @@ describe('Screenshots', () => {
     expect(fs.existsSync(filePath)).toBe(true);
   });
 });
+
+describe('captureScreenshot filename safety', () => {
+  it('writes a file even when the label contains path-hostile characters', async () => {
+    const { captureScreenshot } = await import('../../automation/screenshots');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gpflow-ss-'));
+    const fakePage = { screenshot: async ({ path: p }: { path: string }) => { fs.writeFileSync(p, 'png'); } } as any;
+
+    const file = await captureScreenshot(fakePage, tmp, 7, 3, 'w0-Park Surgery / Health: Centre?');
+
+    expect(fs.existsSync(file)).toBe(true);
+    expect(path.dirname(file)).toBe(path.join(tmp, '7'));
+    expect(path.basename(file)).not.toMatch(/[\/\:?*"<>|]/);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+});

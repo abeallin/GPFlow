@@ -7,8 +7,15 @@ import { Tabs } from '@/components/ui/Tabs';
 import { Select } from '@/components/ui/Select';
 import { Alert } from '@/components/ui/Alert';
 import { TemplateForm } from '@/components/TemplateForm';
-import { ipc } from '@/lib/ipc-client';
-import { getAccounts, getAccountById, getPasswordAsync, type Account } from '@/lib/accounts';
+import { ipc, type StartRunConfig } from '@/lib/ipc-client';
+import { getAccounts, getPasswordAsync, type Account } from '@/lib/accounts';
+import {
+  groupSelectedByAccount,
+  findCrossAccountDuplicates,
+  type Assignments,
+  type PracticeLike,
+} from '@/lib/assignments';
+import { readJson, isArray, isStringRecord, isNumberArray } from '@/lib/storage';
 import { useRouter } from 'next/navigation';
 
 interface TemplateConfig {
@@ -19,114 +26,112 @@ interface TemplateConfig {
   allow_respond: boolean;
 }
 
+type ScreenshotMode = StartRunConfig['screenshotMode'];
+
 export default function TemplatesPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [assignments, setAssignments] = useState<Record<string, string>>({});
-  const [practices, setPractices] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<Assignments>({});
+  const [practices, setPractices] = useState<PracticeLike[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [screenshotMode, setScreenshotMode] = useState<string>('on-failure');
+  const [screenshotMode, setScreenshotMode] = useState<ScreenshotMode>('on-failure');
   const [webError, setWebError] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [startFailures, setStartFailures] = useState<{ accountLabel: string; reason: string }[]>([]);
+  const [starting, setStarting] = useState(false);
   const [isElectron, setIsElectron] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     setIsElectron(!!window.electronAPI);
-    const stored = sessionStorage.getItem('selectedPracticeIds');
-    if (stored) setSelectedIds(JSON.parse(stored));
-
-    const assignStored = localStorage.getItem('gpflow_assignments');
-    if (assignStored) setAssignments(JSON.parse(assignStored));
-
-    const practicesStored = localStorage.getItem('gpflow_practices');
-    if (practicesStored) setPractices(JSON.parse(practicesStored));
-
+    setSelectedIds(readJson<number[]>(sessionStorage, 'selectedPracticeIds', [], isNumberArray));
+    setAssignments(readJson<Assignments>(localStorage, 'gpflow_assignments', {}, isStringRecord));
+    setPractices(readJson<PracticeLike[]>(localStorage, 'gpflow_practices', [], isArray));
     setAccounts(getAccounts());
   }, []);
 
-  // Group selected practices by account (assignments keyed by accurx_id)
-  const groupedByAccount = useMemo(() => {
-    const groups: Record<string, { account: Account; practiceIds: number[] }> = {};
-    const unassigned: number[] = [];
+  // Group selected practices by account (assignments keyed by `${source_file}::${accurx_id}`)
+  const groupedByAccount = useMemo(
+    () => groupSelectedByAccount(selectedIds, practices, assignments, accounts),
+    [selectedIds, assignments, practices, accounts],
+  );
 
-    for (const id of selectedIds) {
-      const practice = practices.find((p) => p.id === id);
-      const accountId = practice ? assignments[practice.accurx_id] : undefined;
-      if (accountId) {
-        if (!groups[accountId]) {
-          const account = getAccountById(accountId);
-          if (account) groups[accountId] = { account, practiceIds: [] };
-        }
-        groups[accountId]?.practiceIds.push(id);
-      } else {
-        unassigned.push(id);
-      }
-    }
-    return { groups, unassigned };
-  }, [selectedIds, assignments, practices]);
-
-  // Detect cross-account duplicates (same accurx_id in multiple accounts)
+  // Detect cross-account duplicates (same accurx_id assigned to multiple accounts)
   const duplicates = useMemo(() => {
-    const selectedPractices = practices.filter((p) => selectedIds.includes(p.id));
-
-    // Map accurx_id → set of account IDs
-    const accurxToAccounts = new Map<string, Set<string>>();
-    for (const p of selectedPractices) {
-      const accountId = assignments[p.accurx_id];
-      if (!accountId) continue;
-      if (!accurxToAccounts.has(p.accurx_id)) {
-        accurxToAccounts.set(p.accurx_id, new Set());
-      }
-      accurxToAccounts.get(p.accurx_id)!.add(accountId);
-    }
-
-    // Find accurx_ids that appear in more than one account
-    const dupes: { accurxId: string; name: string; accountLabels: string[] }[] = [];
-    for (const [accurxId, accountIds] of accurxToAccounts) {
-      if (accountIds.size > 1) {
-        const practice = selectedPractices.find((p) => p.accurx_id === accurxId);
-        dupes.push({
-          accurxId,
-          name: practice?.name || accurxId,
-          accountLabels: [...accountIds].map((id) => getAccountById(id)?.label || id),
-        });
-      }
-    }
-    return dupes;
-  }, [practices, selectedIds, assignments]);
+    const labelOf = (id: string) => accounts.find((a) => a.id === id)?.label || id;
+    return findCrossAccountDuplicates(selectedIds, practices, assignments).map((d) => ({
+      accurxId: d.accurxId,
+      name: d.name,
+      accountLabels: [...new Set(d.entries.map((e) => e.accountId))].map(labelOf),
+    }));
+  }, [practices, selectedIds, assignments, accounts]);
 
   const startRun = async (config: TemplateConfig, type: 'create' | 'delete') => {
+    if (starting) return;
+    setStartError(null);
+    setStartFailures([]);
+
     if (!ipc) {
       setWebError('Automation requires the GP Flow desktop app. The web version is for data management only.');
       return;
     }
     setWebError(null);
 
-    const { groups } = groupedByAccount;
-    const accountEntries = Object.values(groups);
-
+    const accountEntries = Object.values(groupedByAccount.groups);
     if (accountEntries.length === 0) {
-      const { runId } = await ipc.startRun({
-        type,
-        templateConfig: config,
-        practiceIds: selectedIds,
-        screenshotMode,
-      });
-      router.push(`/runs?active=${runId}`);
+      setStartError('No assigned practices selected. Go back to the Data page and assign each file to an account first.');
       return;
     }
 
-    // Start one run per account — each gets its own browser context
-    for (const { account, practiceIds } of accountEntries) {
-      await ipc.startRun({
-        type,
-        templateConfig: config,
-        practiceIds,
-        screenshotMode,
-        credentials: { username: account.username, password: (await getPasswordAsync(account.id)) || '' },
-        accountLabel: account.label,
+    setStarting(true);
+    try {
+      // Resolve every credential first so a missing password aborts before any run starts.
+      const configs: StartRunConfig[] = [];
+      const missingPasswords: string[] = [];
+      for (const { account, practices: runPractices } of accountEntries) {
+        const password = await getPasswordAsync(account.id);
+        if (!password) {
+          missingPasswords.push(account.label);
+          continue;
+        }
+        configs.push({
+          type,
+          templateConfig: config,
+          practices: runPractices,
+          screenshotMode,
+          credentials: { username: account.username, password },
+          accountLabel: account.label,
+        });
+      }
+
+      if (missingPasswords.length > 0) {
+        setStartError(
+          `No stored password for ${missingPasswords.join(', ')}. Re-add the account on the login page before starting a run.`,
+        );
+        return;
+      }
+
+      // Start every account's run concurrently; each resolves as soon as it is registered.
+      const api = ipc;
+      const results = await Promise.allSettled(configs.map((c) => api.startRun(c)));
+
+      const failures: { accountLabel: string; reason: string }[] = [];
+      let anySuccess = false;
+      results.forEach((result, i) => {
+        if (result.status === 'fulfilled') {
+          anySuccess = true;
+        } else {
+          const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+          failures.push({ accountLabel: configs[i].accountLabel ?? '', reason });
+        }
       });
+
+      setStartFailures(failures);
+      if (anySuccess) router.push('/runs');
+    } catch (err) {
+      setStartError(err instanceof Error ? err.message : 'Failed to start run');
+    } finally {
+      setStarting(false);
     }
-    router.push('/runs');
   };
 
   return (
@@ -144,12 +149,12 @@ export default function TemplatesPage() {
           <span className="text-sm text-text-muted">
             {selectedIds.length} practices selected
           </span>
-          {Object.values(groupedByAccount.groups).map(({ account, practiceIds }) => (
+          {Object.values(groupedByAccount.groups).map(({ account, practices: runPractices }) => (
             <span
               key={account.id}
               className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-accent/10 text-accent border border-accent/20"
             >
-              {account.label}: {practiceIds.length}
+              {account.label}: {runPractices.length}
             </span>
           ))}
           {groupedByAccount.unassigned.length > 0 && (
@@ -165,7 +170,7 @@ export default function TemplatesPage() {
         <Alert variant="warning" title={`${duplicates.length} duplicate${duplicates.length > 1 ? 's' : ''} across accounts`}>
           <div className="space-y-1.5 mt-1">
             <p className="text-xs text-text-secondary">
-              These practices are assigned to multiple accounts. Each will only run on the first account to avoid duplicate automation.
+              These practices are assigned to multiple accounts and will be processed once per account.
             </p>
             <div className="max-h-32 overflow-y-auto space-y-1">
               {duplicates.slice(0, 10).map((d) => (
@@ -190,6 +195,28 @@ export default function TemplatesPage() {
         </Alert>
       )}
 
+      {startError && (
+        <Alert variant="error" title="Cannot start run" onDismiss={() => setStartError(null)}>
+          {startError}
+        </Alert>
+      )}
+
+      {startFailures.length > 0 && (
+        <Alert
+          variant="error"
+          title={`${startFailures.length} account${startFailures.length > 1 ? 's' : ''} failed to start`}
+          onDismiss={() => setStartFailures([])}
+        >
+          <ul className="space-y-1 mt-1">
+            {startFailures.map((f, i) => (
+              <li key={`${f.accountLabel}-${i}`} className="text-xs">
+                <span className="font-medium text-text-primary">{f.accountLabel || 'Account'}:</span> {f.reason}
+              </li>
+            ))}
+          </ul>
+        </Alert>
+      )}
+
       {!isElectron && (
         <div className="glass-card rounded-xl px-4 py-3 text-xs text-text-muted flex items-center gap-2">
           <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
@@ -208,12 +235,12 @@ export default function TemplatesPage() {
             {
               id: 'create',
               label: 'Create Template',
-              content: <TemplateForm mode="create" onSubmit={(c) => startRun(c, 'create')} practiceCount={selectedIds.length} />,
+              content: <TemplateForm mode="create" onSubmit={(c) => startRun(c, 'create')} practiceCount={selectedIds.length} busy={starting} />,
             },
             {
               id: 'delete',
               label: 'Delete Template',
-              content: <TemplateForm mode="delete" onSubmit={(c) => startRun(c, 'delete')} practiceCount={selectedIds.length} />,
+              content: <TemplateForm mode="delete" onSubmit={(c) => startRun(c, 'delete')} practiceCount={selectedIds.length} busy={starting} />,
             },
           ]} />
         </div>
@@ -229,7 +256,7 @@ export default function TemplatesPage() {
           <Select
             label="Screenshot Mode"
             value={screenshotMode}
-            onChange={(e) => setScreenshotMode(e.target.value)}
+            onChange={(e) => setScreenshotMode(e.target.value as ScreenshotMode)}
           >
             <option value="off">Off</option>
             <option value="on-failure">On failure only</option>

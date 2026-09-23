@@ -1,13 +1,13 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
-import type { BrowserWindow } from 'electron';
 import type Database from 'better-sqlite3';
-import { loginToAccurx, waitFor2faCompletion } from './actions/login';
-import { createTemplate } from './actions/create-template';
-import { deleteTemplate } from './actions/delete-template';
+import { loginToAccurx, waitFor2faCompletion, type LoginResult } from './actions/login';
+import { createTemplate, type CreateTemplateResult, type TemplateConfig } from './actions/create-template';
+import { deleteTemplate, type DeleteTemplateResult } from './actions/delete-template';
 import { captureScreenshot, type ScreenshotMode } from './screenshots';
-import { hashDom, diffSnapshots, type SnapshotData } from './change-detection';
-import { createRun, updateRunStep, completeRun, getRunSteps } from '../database/queries/runs';
-import { getPracticeById } from '../database/queries/practices';
+import { hashDom } from './change-detection';
+import {
+  createRun, updateRunStep, completeRun, getRunSteps, finalisePendingSteps, type RunPractice, type RunStep,
+} from '../database/queries/runs';
 import { saveSnapshot, getCurrentSnapshot } from '../database/queries/snapshots';
 import { CancellationToken, CancellationError } from './cancellation-token';
 import { WorkQueue } from './work-queue';
@@ -17,18 +17,86 @@ const BASE_TEMPLATE_URL = 'https://web.accurx.com/w/{id}/settings/templates?tab=
 
 export interface RunConfig {
   type: 'create' | 'delete';
-  templateConfig: {
-    template_name: string;
-    message: string;
-    individual: boolean;
-    batch: boolean;
-    allow_respond: boolean;
-  };
-  practiceIds: number[];
+  templateConfig: TemplateConfig;
+  practices: RunPractice[];
   screenshotMode: ScreenshotMode;
   credentials: { username: string; password: string };
   concurrency?: number;
   accountLabel?: string;
+}
+
+/** Where the runner pushes events; in production this is `mainWindow.webContents`. */
+export interface EventSink {
+  send: (channel: string, payload: unknown) => void;
+}
+
+/** Everything with a side effect is injectable so the runner can be tested without a browser. */
+export interface RunnerDeps {
+  launchBrowser: () => Promise<Browser>;
+  login: (page: Page, username: string, password: string) => Promise<LoginResult>;
+  waitFor2fa: (page: Page) => Promise<boolean>;
+  createTemplate: (page: Page, cfg: TemplateConfig) => Promise<CreateTemplateResult>;
+  deleteTemplate: (page: Page, name: string) => Promise<DeleteTemplateResult>;
+  captureScreenshot: (page: Page, basePath: string, runId: number, stepIndex: number, label: string) => Promise<string>;
+  powerSaveBlocker: { start: () => number | null; stop: (id: number) => void } | null;
+  screenshotDir: string;
+  retryDelayMs: number;
+  /** Abort the run after this many failures in a row (e.g. expired session). */
+  maxConsecutiveFailures: number;
+}
+
+export class RunAbortedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RunAbortedError';
+  }
+}
+
+function defaultDeps(): RunnerDeps {
+  let powerSaveBlocker: RunnerDeps['powerSaveBlocker'] = null;
+  let screenshotDir = path.join(process.cwd(), 'screenshots');
+  try {
+    // Only available inside the Electron main process.
+    const electron = require('electron');
+    powerSaveBlocker = {
+      start: () => electron.powerSaveBlocker.start('prevent-display-sleep'),
+      stop: (id: number) => electron.powerSaveBlocker.stop(id),
+    };
+    screenshotDir = path.join(electron.app.getPath('userData'), 'screenshots');
+  } catch { /* not in electron */ }
+
+  return {
+    launchBrowser: () => chromium.launch({ headless: false }),
+    login: loginToAccurx,
+    waitFor2fa: waitFor2faCompletion,
+    createTemplate,
+    deleteTemplate,
+    captureScreenshot,
+    powerSaveBlocker,
+    screenshotDir,
+    retryDelayMs: 3000,
+    maxConsecutiveFailures: 5,
+  };
+}
+
+export function validateRunConfig(config: RunConfig): void {
+  if (config.type !== 'create' && config.type !== 'delete') {
+    throw new Error(`Invalid run type: ${String(config.type)}`);
+  }
+  if (!Array.isArray(config.practices) || config.practices.length === 0) {
+    throw new Error('At least one practice is required');
+  }
+  for (const p of config.practices) {
+    if (typeof p?.id !== 'number' || typeof p.accurx_id !== 'string' || !p.accurx_id) {
+      throw new Error('Each practice needs a numeric id and an accurx_id');
+    }
+  }
+  if (!config.credentials?.username || !config.credentials?.password) {
+    throw new Error('Credentials (username and password) are required');
+  }
+  if (!config.templateConfig?.template_name) {
+    throw new Error('A template name is required');
+  }
 }
 
 export class AutomationRunner {
@@ -37,161 +105,194 @@ export class AutomationRunner {
   private pages: Page[] = [];
   private token = new CancellationToken();
   private powerSaveId: number | null = null;
-  private mainWindow: BrowserWindow;
-  public currentRunId: number = 0;
-  private db: Database.Database;
-  private _completedCount = 0;
+  private readonly sink: EventSink;
+  private readonly db: Database.Database;
+  private readonly deps: RunnerDeps;
+  public currentRunId = 0;
+  private completedCount = 0;
+  private consecutiveFailures = 0;
+  private abortReason: string | null = null;
+  private changeChecked = false;
 
-  constructor(mainWindow: BrowserWindow, db: Database.Database) {
-    this.mainWindow = mainWindow;
+  constructor(sink: EventSink, db: Database.Database, deps: Partial<RunnerDeps> = {}) {
+    this.sink = sink;
     this.db = db;
+    this.deps = { ...defaultDeps(), ...deps };
+  }
+
+  /** Convenience for callers that want to wait for the whole run. */
+  async run(config: RunConfig): Promise<number> {
+    return this.launch(config).completion;
   }
 
   /**
-   * Run automation for a batch of practices.
-   * O(n/k) wall time where n = practices, k = concurrency.
+   * Validate, create the run record synchronously, and start executing in the background.
+   * `runId` is available immediately; `completion` settles when the run has finished.
+   * `completion` rejects with the fatal error (login failure, abort) — step-level failures
+   * are recorded on the steps and do not reject.
    */
-  async run(config: RunConfig): Promise<number> {
+  launch(config: RunConfig): { runId: number; completion: Promise<number> } {
+    validateRunConfig(config);
+
     this.token = new CancellationToken();
-    this._completedCount = 0;
+    this.completedCount = 0;
+    this.consecutiveFailures = 0;
+    this.abortReason = null;
+    this.changeChecked = false;
 
     const concurrency = Math.max(1, Math.min(config.concurrency ?? 4, 15));
-
-    // Prevent display sleep
-    try {
-      const { powerSaveBlocker } = require('electron');
-      this.powerSaveId = powerSaveBlocker.start('prevent-display-sleep');
-    } catch { /* not in electron context */ }
-
-    const runId = createRun(this.db, config.type, config.templateConfig, config.practiceIds, concurrency);
+    const runId = createRun(this.db, config.type, config.templateConfig as any, config.practices, concurrency);
     this.currentRunId = runId;
-    const steps = getRunSteps(this.db, runId);
 
-    let screenshotPath: string;
-    try {
-      const { app } = require('electron');
-      screenshotPath = path.join(app.getPath('userData'), 'screenshots');
-    } catch {
-      screenshotPath = path.join(process.cwd(), 'screenshots');
+    const completion = this.execute(config, runId, concurrency);
+    return { runId, completion };
+  }
+
+  private label(config: RunConfig): string {
+    return config.accountLabel || config.credentials.username;
+  }
+
+  private async execute(config: RunConfig, runId: number, concurrency: number): Promise<number> {
+    const steps = getRunSteps(this.db, runId);
+    const accountLabel = this.label(config);
+
+    if (this.deps.powerSaveBlocker) {
+      try { this.powerSaveId = this.deps.powerSaveBlocker.start(); } catch { this.powerSaveId = null; }
     }
 
     try {
-      // Launch browser and create shared context
-      this.browser = await chromium.launch({ headless: false });
-      this.context = await this.browser.newContext();
+      this.browser = await this.token.race(this.deps.launchBrowser());
+      this.context = await this.token.race(this.browser.newContext());
 
       // Login on a dedicated page — all pages in the context share cookies
-      const loginPage = await this.context.newPage();
+      const loginPage = await this.token.race(this.context.newPage());
       const loginResult = await this.token.race(
-        loginToAccurx(loginPage, config.credentials.username, config.credentials.password),
+        this.deps.login(loginPage, config.credentials.username, config.credentials.password),
       );
 
       if (loginResult.requires2fa) {
-        this.mainWindow.webContents.send('automation:2fa-required', { runId });
-        const completed = await this.token.race(waitFor2faCompletion(loginPage));
+        this.sink.send('automation:2fa-required', { runId, accountLabel });
+        const completed = await this.token.race(this.deps.waitFor2fa(loginPage));
         if (!completed) {
           throw new Error('2FA timeout — user did not complete within 5 minutes');
         }
       } else if (!loginResult.success) {
-        throw new Error(`Login failed: ${loginResult.error}`);
+        throw new Error(`Login failed: ${loginResult.error ?? 'unknown error'}`);
       }
 
-      // Close login page — session cookies are in the context
-      await loginPage.close();
+      await loginPage.close().catch(() => {});
 
-      // Create k worker pages from the shared context
-      const effectiveConcurrency = Math.min(concurrency, steps.length || 1);
-      this.pages = await Promise.all(
+      const effectiveConcurrency = Math.min(concurrency, steps.length);
+      this.pages = await this.token.race(Promise.all(
         Array.from({ length: effectiveConcurrency }, () => this.context!.newPage()),
-      );
+      ));
 
-      // Build work queue — O(n/k) distribution
-      const queue = new WorkQueue<typeof steps[0]>({
+      const queue = new WorkQueue<RunStep>({
         items: steps,
         concurrency: effectiveConcurrency,
         token: this.token,
-        worker: async (step, workerIndex) => {
-          this.token.throwIfCancelled();
-
-          const practice = getPracticeById(this.db, step.practice_id);
-          if (!practice) {
-            updateRunStep(this.db, step.id, 'skipped', 'Practice not found', undefined, undefined, workerIndex);
-            return;
-          }
-
-          const page = this.pages[workerIndex];
-          const url = BASE_TEMPLATE_URL.replace('{id}', practice.accurx_id);
-
-          const result = await this.processOnePractice(
-            page, config, url, practice, step.id, this._completedCount, runId, screenshotPath, workerIndex,
-          );
-
-          this._completedCount++;
-
-          this.mainWindow.webContents.send('automation:progress', {
-            runId,
-            step: this._completedCount,
-            total: steps.length,
-            practice: practice.name,
-            status: result.status,
-            screenshotPath: result.screenshotPath,
-            workerIndex,
-            accountLabel: config.accountLabel || config.credentials.username,
-            timestamp: new Date().toISOString(),
-          });
-        },
+        worker: (step, workerIndex) => this.processStep(step, workerIndex, config, runId, steps.length),
       });
 
       await queue.run();
 
-      // Mark any remaining unprocessed steps as cancelled — O(remaining)
-      if (this.token.isCancelled) {
-        const cancelTx = this.db.transaction(() => {
-          for (let i = queue.cursor; i < steps.length; i++) {
-            const step = steps[i];
-            const current = this.db.prepare('SELECT status FROM run_steps WHERE id = ?').get(step.id) as any;
-            if (current?.status === 'pending') {
-              updateRunStep(this.db, step.id, 'cancelled');
-            }
-          }
-        });
-        cancelTx();
+      if (this.abortReason) {
+        finalisePendingSteps(this.db, runId, 'cancelled', this.abortReason);
+        completeRun(this.db, runId, { cancelled: true });
+        this.sendComplete(runId, accountLabel);
+        throw new RunAbortedError(this.abortReason);
       }
 
-      completeRun(this.db, runId);
+      if (this.token.isCancelled) {
+        finalisePendingSteps(this.db, runId, 'cancelled', 'Cancelled by user');
+        completeRun(this.db, runId, { cancelled: true });
+      } else {
+        completeRun(this.db, runId);
+      }
 
-      const finalRun = this.db.prepare('SELECT * FROM runs WHERE id = ?').get(runId) as any;
-      this.mainWindow.webContents.send('automation:complete', {
-        runId,
-        accountLabel: config.accountLabel || config.credentials.username,
-        summary: {
-          totalCount: finalRun.total_count,
-          successCount: finalRun.success_count,
-          failCount: finalRun.fail_count,
-          duration: new Date(finalRun.completed_at).getTime() - new Date(finalRun.started_at).getTime(),
-        },
-      });
-
+      this.sendComplete(runId, accountLabel);
       return runId;
     } catch (error) {
-      if (!(error instanceof CancellationError)) {
-        this.db.prepare(`UPDATE runs SET status = ?, completed_at = datetime('now') WHERE id = ?`)
-          .run('failed', runId);
-      }
+      if (error instanceof RunAbortedError) throw error;
+
       if (error instanceof CancellationError) {
-        completeRun(this.db, runId);
+        finalisePendingSteps(this.db, runId, 'cancelled', 'Cancelled by user');
+        completeRun(this.db, runId, { cancelled: true });
+        this.sendComplete(runId, accountLabel);
         return runId;
       }
+
+      // Fatal (login, browser launch, 2FA): every untouched step is retryable.
+      const message = error instanceof Error ? error.message : String(error);
+      finalisePendingSteps(this.db, runId, 'failed', message);
+      completeRun(this.db, runId);
+      this.db.prepare(`UPDATE runs SET status = 'failed' WHERE id = ?`).run(runId);
       throw error;
     } finally {
       await this.cleanup();
     }
   }
 
-  /**
-   * Process a single practice on a specific page.
-   * Every Playwright await is wrapped with token.race() for sub-second cancellation.
-   */
+  private sendComplete(runId: number, accountLabel: string): void {
+    const finalRun = this.db.prepare('SELECT * FROM runs WHERE id = ?').get(runId) as any;
+    this.sink.send('automation:complete', {
+      runId,
+      accountLabel,
+      status: finalRun.status,
+      summary: {
+        totalCount: finalRun.total_count,
+        successCount: finalRun.success_count,
+        failCount: finalRun.fail_count,
+        duration: new Date(finalRun.completed_at).getTime() - new Date(finalRun.started_at).getTime(),
+      },
+    });
+  }
+
+  private async processStep(step: RunStep, workerIndex: number, config: RunConfig, runId: number, total: number): Promise<void> {
+    this.token.throwIfCancelled();
+    if (this.abortReason) throw new CancellationError();
+
+    const practice = {
+      id: step.practice_id,
+      name: step.practice_name || step.accurx_id || String(step.practice_id),
+      accurx_id: step.accurx_id || '',
+    };
+    if (!practice.accurx_id) {
+      updateRunStep(this.db, step.id, 'skipped', 'Practice has no accurx_id', undefined, undefined, workerIndex);
+      return;
+    }
+
+    const page = this.pages[workerIndex];
+    const url = BASE_TEMPLATE_URL.replace('{id}', practice.accurx_id);
+    const stepIndex = step.id; // unique per step, stable across workers
+
+    const result = await this.processOnePractice(page, config, url, practice, step.id, stepIndex, runId, workerIndex);
+
+    this.completedCount++;
+    if (result.status === 'failed') {
+      this.consecutiveFailures++;
+      if (this.consecutiveFailures >= this.deps.maxConsecutiveFailures && !this.abortReason) {
+        this.abortReason = `Aborted after ${this.consecutiveFailures} consecutive failures (last: ${result.error ?? 'unknown'})`;
+        this.token.cancel();
+      }
+    } else {
+      this.consecutiveFailures = 0;
+    }
+
+    this.sink.send('automation:progress', {
+      runId,
+      step: this.completedCount,
+      total,
+      practice: practice.name,
+      status: result.status,
+      error: result.error,
+      screenshotPath: result.screenshotPath,
+      workerIndex,
+      accountLabel: this.label(config),
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   private async processOnePractice(
     page: Page,
     config: RunConfig,
@@ -200,80 +301,57 @@ export class AutomationRunner {
     stepId: number,
     stepIndex: number,
     runId: number,
-    screenshotPath: string,
     workerIndex: number,
     attempt = 1,
-  ): Promise<{ status: string; screenshotPath?: string }> {
+  ): Promise<{ status: 'success' | 'failed' | 'skipped'; screenshotPath?: string; error?: string }> {
     try {
-      await this.token.race(
-        page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 }),
-      );
+      await this.token.race(page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 }));
 
-      // Session expiry check — Accurx redirects to login if session is dead
       if (page.url().includes('/login') || page.url().includes('/two-factor')) {
         throw new Error('Session expired — Accurx redirected to login page');
       }
 
-      let success: boolean;
-
       if (config.type === 'create') {
-        const result = await this.token.race(createTemplate(page, config.templateConfig));
-        success = result.success || result.alreadyExists;
+        const result = await this.token.race(this.deps.createTemplate(page, config.templateConfig));
         if (result.alreadyExists) {
           updateRunStep(this.db, stepId, 'skipped', 'Template already exists', undefined, undefined, workerIndex);
           return { status: 'skipped' };
         }
+        if (!result.success) throw new Error(result.error || 'Template creation failed');
       } else {
-        const result = await this.token.race(deleteTemplate(page, config.templateConfig.template_name));
-        success = result.success;
-        if (!success && result.deletedCount === 0) {
+        const result = await this.token.race(this.deps.deleteTemplate(page, config.templateConfig.template_name));
+        if (result.notFound) {
           updateRunStep(this.db, stepId, 'skipped', 'Template not found', undefined, undefined, workerIndex);
           return { status: 'skipped' };
         }
+        if (!result.success) throw new Error(result.error || 'Template deletion failed');
       }
 
-      if (success) {
-        // Change detection: only worker 0 to avoid race conditions
-        if (workerIndex === 0) {
-          const domContent = await this.token.race(page.content());
-          const currentHash = hashDom(domContent);
-          const previousSnapshot = getCurrentSnapshot(this.db, config.type);
+      await this.checkForLayoutChange(page, config.type);
 
-          if (previousSnapshot) {
-            const currentSnapshot: SnapshotData = { selectors: {}, domHash: currentHash };
-            const diff = diffSnapshots(
-              { selectors: JSON.parse(previousSnapshot.selectors as any), domHash: previousSnapshot.dom_hash },
-              currentSnapshot,
-            );
-            if (diff.changed) {
-              this.mainWindow.webContents.send('automation:change-detected', {
-                action: config.type,
-                changes: diff.changes,
-                domHashChanged: diff.domHashChanged,
-              });
-            }
-          }
-          saveSnapshot(this.db, config.type, {}, currentHash);
+      let ssPath: string | undefined;
+      if (config.screenshotMode === 'every-step') {
+        try {
+          ssPath = await this.token.race(
+            this.deps.captureScreenshot(page, this.deps.screenshotDir, runId, stepIndex, `w${workerIndex}-${practice.name}`),
+          );
+        } catch (e) {
+          if (e instanceof CancellationError) throw e;
+          /* a failed screenshot must not fail a successful step */
         }
-
-        let ssPath: string | undefined;
-        if (config.screenshotMode === 'every-step') {
-          ssPath = await captureScreenshot(page, screenshotPath, runId, stepIndex, `w${workerIndex}-${practice.name}`);
-        }
-
-        updateRunStep(this.db, stepId, 'success', undefined, ssPath, undefined, workerIndex);
-        return { status: 'success', screenshotPath: ssPath };
       }
 
-      throw new Error('Action returned failure');
+      updateRunStep(this.db, stepId, 'success', undefined, ssPath, undefined, workerIndex);
+      return { status: 'success', screenshotPath: ssPath };
     } catch (error) {
-      // Cancellation errors propagate immediately — no retry
       if (error instanceof CancellationError) throw error;
+      if (this.token.isCancelled) throw new CancellationError();
 
       if (attempt < 2) {
-        // Cancellable retry delay
-        await this.token.race(new Promise((r) => setTimeout(r, 3000)));
-        return this.processOnePractice(page, config, url, practice, stepId, stepIndex, runId, screenshotPath, workerIndex, 2);
+        if (this.deps.retryDelayMs > 0) {
+          await this.token.race(new Promise((r) => setTimeout(r, this.deps.retryDelayMs)));
+        }
+        return this.processOnePractice(page, config, url, practice, stepId, stepIndex, runId, workerIndex, 2);
       }
 
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -281,31 +359,47 @@ export class AutomationRunner {
       let ssPath: string | undefined;
       if (config.screenshotMode !== 'off') {
         try {
-          ssPath = await captureScreenshot(page, screenshotPath, runId, stepIndex, `w${workerIndex}-${practice.name}-error`);
-        } catch { /* ignore screenshot failure */ }
+          ssPath = await this.token.race(
+            this.deps.captureScreenshot(page, this.deps.screenshotDir, runId, stepIndex, `w${workerIndex}-${practice.name}-error`),
+          );
+        } catch (e) {
+          if (e instanceof CancellationError) throw e;
+        }
       }
 
       updateRunStep(this.db, stepId, 'failed', errorMsg, ssPath, undefined, workerIndex);
-      return { status: 'failed', screenshotPath: ssPath };
+      return { status: 'failed', screenshotPath: ssPath, error: errorMsg };
     }
   }
 
   /**
-   * Cancel the run. Closes all pages to force-abort in-flight Playwright operations.
-   * Sub-second cancellation — no waiting for timeouts.
+   * Compare the page structure once per run against the previous run's snapshot,
+   * so an Accurx redesign is flagged once rather than on every practice.
    */
+  private async checkForLayoutChange(page: Page, action: 'create' | 'delete'): Promise<void> {
+    if (this.changeChecked) return;
+    this.changeChecked = true;
+    try {
+      const currentHash = hashDom(await this.token.race(page.content()));
+      const previous = getCurrentSnapshot(this.db, action);
+      if (previous && previous.dom_hash !== currentHash) {
+        this.sink.send('automation:change-detected', { action, domHashChanged: true, changes: [] });
+      }
+      saveSnapshot(this.db, action, {}, currentHash);
+    } catch (e) {
+      if (e instanceof CancellationError) throw e;
+    }
+  }
+
+  /** Cancel the run. Closes all pages to force-abort in-flight Playwright operations. */
   async stop(): Promise<void> {
     this.token.cancel();
-    // Close pages to interrupt in-flight network requests
     await Promise.allSettled(this.pages.map((p) => p.close().catch(() => {})));
   }
 
   private async cleanup(): Promise<void> {
-    if (this.powerSaveId !== null) {
-      try {
-        const { powerSaveBlocker } = require('electron');
-        powerSaveBlocker.stop(this.powerSaveId);
-      } catch { /* not in electron context */ }
+    if (this.powerSaveId !== null && this.deps.powerSaveBlocker) {
+      try { this.deps.powerSaveBlocker.stop(this.powerSaveId); } catch { /* ignore */ }
       this.powerSaveId = null;
     }
     this.pages = [];

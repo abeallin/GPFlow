@@ -5,7 +5,7 @@ import { Upload, FileSpreadsheet, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Badge } from './ui/Badge';
 import { ipc } from '@/lib/ipc-client';
-import { parseCsvLine } from '@/lib/csv-parser';
+import { parseCsv } from '@/lib/csv-parser';
 
 interface CsvImporterProps {
   onImported: () => void;
@@ -14,15 +14,23 @@ interface CsvImporterProps {
 }
 
 function parseCsvText(text: string, fileName: string): { practices: any[]; errors: string[] } {
-  const errors: string[] = [];
-  const lines = text.trim().split('\n');
+  const { header: rawHeader, rows, errors: parseErrors } = parseCsv(text);
 
-  if (lines.length < 2) {
+  if (rawHeader.length === 0 || rows.length === 0) {
     return { practices: [], errors: ['CSV file is empty or has no data rows'] };
   }
 
-  const rawHeader = parseCsvLine(lines[0].replace(/^\uFEFF/, ''));
+  const errors: string[] = [...parseErrors];
   const header = rawHeader.map((h) => h.toLowerCase().replace(/\s+/g, '_'));
+
+  // Duplicate detection on the normalised names too ("Name" vs "name").
+  const seen = new Map<string, number>();
+  for (const h of header) seen.set(h, (seen.get(h) ?? 0) + 1);
+  for (const [name, count] of seen) {
+    if (count > 1 && !errors.some((e) => e.includes(`"${name}"`))) {
+      errors.push(`Duplicate header "${name}" appears ${count} times`);
+    }
+  }
 
   const accurxIdx = header.indexOf('accurx_id');
   if (accurxIdx === -1) {
@@ -33,28 +41,25 @@ function parseCsvText(text: string, fileName: string): { practices: any[]; error
 
   const practices: any[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    if (!lines[i].trim()) continue;
-    const values = parseCsvLine(lines[i]);
+  rows.forEach((values, i) => {
     const row: Record<string, string> = {};
-
     for (let j = 0; j < header.length; j++) {
       row[header[j]] = values[j] || '';
     }
 
     if (!row.accurx_id) {
-      errors.push(`Row ${i + 1}: missing accurx_id, skipped`);
-      continue;
+      errors.push(`Row ${i + 2}: missing accurx_id, skipped`);
+      return;
     }
 
     practices.push({
-      id: i,
+      id: i + 1,
       name: (nameIdx !== -1 ? values[nameIdx] : '') || '',
       accurx_id: row.accurx_id,
       source_file: fileName,
       ...row,
     });
-  }
+  });
 
   return { practices, errors };
 }

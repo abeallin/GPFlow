@@ -19,9 +19,11 @@ interface TemplateFormProps {
   mode: 'create' | 'delete';
   onSubmit: (config: TemplateConfig) => void;
   practiceCount: number;
+  /** Disables the submit button while a run is being started. */
+  busy?: boolean;
 }
 
-export function TemplateForm({ mode, onSubmit, practiceCount }: TemplateFormProps) {
+export function TemplateForm({ mode, onSubmit, practiceCount, busy = false }: TemplateFormProps) {
   const [templateName, setTemplateName] = useState('');
   const [message, setMessage] = useState('');
   const [individual, setIndividual] = useState(true);
@@ -30,6 +32,7 @@ export function TemplateForm({ mode, onSubmit, practiceCount }: TemplateFormProp
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (busy) return;
     onSubmit({ template_name: templateName, message, individual, batch, allow_respond: allowRespond });
   };
 
@@ -71,7 +74,9 @@ export function TemplateForm({ mode, onSubmit, practiceCount }: TemplateFormProp
 
       <Button
         type="submit"
-        className="w-full bg-accent hover:bg-accent-hover text-on-accent font-semibold glow-accent transition-all duration-200"
+        loading={busy}
+        aria-busy={busy}
+        className="w-full bg-accent hover:bg-accent-hover text-text-on-accent font-semibold glow-accent transition-all duration-200"
       >
         {mode === 'create' ? 'Bulk Create Template' : 'Bulk Delete Template'}
       </Button>

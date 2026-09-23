@@ -49,7 +49,7 @@ GP Flow automates Accurx template management across GP practices. It runs as bot
 | Local DB | SQLite (better-sqlite3) |
 | Remote DB | MongoDB (license validation) |
 | Build | electron-vite + electron-builder |
-| Testing | Vitest (69 tests) |
+| Testing | Vitest (169 tests: unit, Playwright fixtures, jsdom) |
 | Language | TypeScript 6 (strict) |
 | Icons | Lucide React |
 
@@ -86,7 +86,7 @@ pnpm test
 rm -rf dist-electron out .next
 pnpm build
 
-# Windows installer (NSIS)
+# Windows installer (NSIS) — also downloads Chromium into playwright-browsers/ for bundling
 pnpm package:win
 # Output: release/GP Flow Setup 1.0.0.exe
 
@@ -114,9 +114,19 @@ Set build command to `pnpm build:web` and start command to `pnpm start:web`. The
 | `pnpm start:web` | Serve static export (for deployment) |
 | `pnpm package:win` | Windows NSIS installer |
 | `pnpm package:mac` | macOS DMG installer |
-| `pnpm install:browsers` | Install Playwright Chromium |
+| `pnpm install:browsers` | Install Playwright Chromium for development |
+| `pnpm bundle:browsers` | Download Chromium into `playwright-browsers/` for packaging (run by `package:*`) |
+| `pnpm typecheck` | TypeScript check across renderer, main and tests |
 | `pnpm test` | Run all tests |
 | `pnpm test:watch` | Tests in watch mode |
+
+## Renderer ↔ main contract
+
+`src/lib/ipc-client.ts` is the single source of truth for the preload bridge (`ElectronAPI`).
+Runs are started with full practice records (`{ id, name, accurx_id }`), never bare ids:
+the main process stores them on `run_steps` and does not look practices up in SQLite.
+`startRun` resolves as soon as the run is registered; progress, 2FA, completion and errors
+arrive as events, and `getActiveRuns` / `stopRun` / `stopAllRuns` control running jobs.
 
 ## Project Structure
 

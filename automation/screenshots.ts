@@ -4,6 +4,11 @@ import fs from 'fs';
 
 export type ScreenshotMode = 'off' | 'on-failure' | 'every-step';
 
+/** Make a label safe for use as a filename segment on Windows, macOS and Linux. */
+export function sanitizeLabel(label: string): string {
+  return label.replace(/[\/\\:*?"<>|\x00-\x1f]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 80) || 'step';
+}
+
 export async function captureScreenshot(
   page: Page,
   basePath: string,
@@ -14,7 +19,7 @@ export async function captureScreenshot(
   const dir = path.join(basePath, String(runId));
   fs.mkdirSync(dir, { recursive: true });
 
-  const filename = `step-${stepIndex}-${label}.png`;
+  const filename = `step-${stepIndex}-${sanitizeLabel(label)}.png`;
   const filepath = path.join(dir, filename);
 
   await page.screenshot({ path: filepath, fullPage: true });

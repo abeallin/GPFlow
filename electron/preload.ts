@@ -1,21 +1,22 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+// Keep in sync with src/lib/ipc-client.ts (ElectronAPI).
 contextBridge.exposeInMainWorld('electronAPI', {
   // Auth
-  login: (username: string, password: string) =>
-    ipcRenderer.invoke('auth:login', { username, password }),
   validateLicense: (key: string) =>
     ipcRenderer.invoke('auth:validate-license', { key }),
   saveCredentials: (creds: { accountId: string; username: string; password: string; licenseKey: string }) =>
     ipcRenderer.invoke('auth:save-credentials', creds),
   getCredentials: (accountId: string) =>
     ipcRenderer.invoke('auth:get-credentials', { accountId }),
+  deleteCredentials: (accountId: string) =>
+    ipcRenderer.invoke('auth:delete-credentials', { accountId }),
   logout: () =>
     ipcRenderer.invoke('auth:logout'),
 
   // Database
-  importCsv: (filePath: string) =>
-    ipcRenderer.invoke('db:import-csv', { filePath }),
+  importCsv: () =>
+    ipcRenderer.invoke('db:import-csv'),
   getPractices: (filters?: Record<string, string>, sort?: { field: string; asc: boolean }) =>
     ipcRenderer.invoke('db:get-practices', { filters, sort }),
   getSavedTemplates: () =>
@@ -30,14 +31,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('db:clear-practices'),
 
   // Automation
-  startRun: (config: { templateConfig: unknown; practiceIds: number[]; screenshotMode: string }) =>
+  startRun: (config: unknown) =>
     ipcRenderer.invoke('automation:start', config),
   stopRun: (runId: number) =>
     ipcRenderer.invoke('automation:stop', { runId }),
+  stopAllRuns: () =>
+    ipcRenderer.invoke('automation:stop-all'),
+  getActiveRuns: () =>
+    ipcRenderer.invoke('automation:active-runs'),
   retryFailed: (runId: number) =>
     ipcRenderer.invoke('automation:retry-failed', { runId }),
-  continuePast2fa: (runId: number) =>
-    ipcRenderer.invoke('automation:2fa-continue', { runId }),
 
   // Event listeners (main → renderer push)
   onProgress: (callback: (event: unknown) => void) =>
@@ -46,6 +49,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('automation:2fa-required', (_event, data) => callback(data)),
   onRunComplete: (callback: (event: unknown) => void) =>
     ipcRenderer.on('automation:complete', (_event, data) => callback(data)),
+  onRunError: (callback: (event: unknown) => void) =>
+    ipcRenderer.on('automation:error', (_event, data) => callback(data)),
   onChangeDetected: (callback: (event: unknown) => void) =>
     ipcRenderer.on('automation:change-detected', (_event, data) => callback(data)),
   onPracticesUpdated: (callback: () => void) =>

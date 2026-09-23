@@ -3,9 +3,11 @@ productName: GP Flow
 directories:
   output: release
 
+# Icons: add assets/icon.ico (Windows) and assets/icon.icns (macOS) and uncomment
+# the `icon:` lines below. electron-builder falls back to its default icon otherwise.
 win:
   target: nsis
-  icon: assets/icon.ico
+  # icon: assets/icon.ico
   forceCodeSigning: false
 
 nsis:
@@ -15,7 +17,7 @@ nsis:
 
 mac:
   target: dmg
-  icon: assets/icon.icns
+  # icon: assets/icon.icns
   category: public.app-category.healthcare-fitness
 
 files:
@@ -24,6 +26,8 @@ files:
   - node_modules/**/*
   - "!node_modules/.cache"
 
+# Chromium for Playwright. `pnpm bundle:browsers` downloads it into playwright-browsers/;
+# electron/bootstrap-env.ts points PLAYWRIGHT_BROWSERS_PATH at <resources>/browsers when packaged.
 extraResources:
   - from: playwright-browsers/
     to: browsers/
