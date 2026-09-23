@@ -20,18 +20,22 @@ mac:
   # icon: assets/icon.icns
   category: public.app-category.healthcare-fitness
 
+# Only the built main process, the static renderer, and production dependencies
+# (electron-builder adds `dependencies` automatically; never list node_modules/**/* here,
+# that drags every devDependency into the installer).
 files:
   - dist-electron/**/*
   - out/**/*
-  - node_modules/**/*
   - "!node_modules/.cache"
 
 # Chromium for Playwright. `pnpm bundle:browsers` downloads it into playwright-browsers/;
 # electron/bootstrap-env.ts points PLAYWRIGHT_BROWSERS_PATH at <resources>/browsers when packaged.
+# The runner launches a headed browser, so the headless shell and ffmpeg (video only) are left out.
 extraResources:
   - from: playwright-browsers/
     to: browsers/
     filter:
-      - "**/*"
+      - "chromium-*/**"
+      - "winldd-*/**"
 
 asar: true

@@ -11,7 +11,9 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const target = path.join(root, 'playwright-browsers');
-const cli = require.resolve('playwright-core/cli.js');
+// cli.js is not in the package's `exports` map, so resolve it through package.json's `bin`.
+const pkgJsonPath = require.resolve('playwright-core/package.json');
+const cli = path.join(path.dirname(pkgJsonPath), require(pkgJsonPath).bin['playwright-core']);
 
 const result = spawnSync(process.execPath, [cli, 'install', 'chromium'], {
   stdio: 'inherit',
