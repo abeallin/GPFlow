@@ -94,3 +94,27 @@ describe('getAccounts', () => {
     expect(getAccounts()).toEqual([]);
   });
 });
+
+describe('updateAccount', () => {
+  it('updates display label and stores updated password', async () => {
+    const { addAccount, updateAccount, getPasswordSync, getAccounts } = await loadAccounts(null);
+    const acc = await addAccount('doc@nhs.net', 'initial');
+    expect(getPasswordSync(acc.id)).toBe('initial');
+
+    const updated = await updateAccount(acc.id, {
+      label: 'Main Surgery',
+      password: 'new-secret-password',
+    });
+
+    expect(updated.label).toBe('Main Surgery');
+    expect(getPasswordSync(acc.id)).toBe('new-secret-password');
+    expect(getAccounts()[0].label).toBe('Main Surgery');
+  });
+
+  it('keeps existing password if no new password provided', async () => {
+    const { addAccount, updateAccount, getPasswordSync } = await loadAccounts(null);
+    const acc = await addAccount('doc@nhs.net', 'initial');
+    await updateAccount(acc.id, { label: 'Renamed' });
+    expect(getPasswordSync(acc.id)).toBe('initial');
+  });
+});

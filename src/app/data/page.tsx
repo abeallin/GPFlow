@@ -21,7 +21,7 @@ import {
   type Assignments,
   type PracticeLike,
 } from '@/lib/assignments';
-import { readJson, isArray, isStringRecord } from '@/lib/storage';
+import { readJson, isArray, isStringRecord, isNumberArray } from '@/lib/storage';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useRouter } from 'next/navigation';
 
@@ -55,12 +55,14 @@ export default function DataPage() {
 
   const autoSelect = useCallback((practiceList: PracticeLike[], assign: Assignments) => {
     const assignedIds = practiceList.filter((p) => assignedAccountId(p, assign)).map((p) => p.id);
-    if (assignedIds.length > 0) setSelectedIds(assignedIds);
+    if (assignedIds.length > 0) {
+      setSelectedIds(assignedIds);
+      sessionStorage.setItem('selectedPracticeIds', JSON.stringify(assignedIds));
+    }
   }, []);
 
-  /** Electron: SQLite is the source of the auto-imported practices. Unknown is not empty. */
   const loadFromElectron = useCallback(async (assign: Assignments) => {
-    if (!ipc) return;
+    if (!ipc || 'isWeb' in ipc) return;
     setLoading(true);
     setLoadError(null);
     try {
@@ -77,27 +79,63 @@ export default function DataPage() {
   }, [autoSelect]);
 
   useEffect(() => {
-    setAccounts(getAccounts());
+    const accs = getAccounts();
+    setAccounts(accs);
 
     const files = readJson<UploadedFile[]>(localStorage, FILES_KEY, [], isUploadedFileArray);
     const assign = readJson<Assignments>(localStorage, ASSIGNMENTS_KEY, {}, isStringRecord);
     setUploadedFiles(files);
     setAssignments(assign);
 
-    if (ipc) {
-      const api = ipc;
+    const isNativeElectron = Boolean(ipc && !('isWeb' in ipc));
+    if (isNativeElectron) {
       void loadFromElectron(assign);
-      api.onPracticesUpdated?.(() => { void loadFromElectron(assign); });
-      return () => { api.removeAllListeners('db:practices-updated'); };
+      ipc!.onPracticesUpdated?.(() => { void loadFromElectron(assign); });
+      return () => { ipc!.removeAllListeners('db:practices-updated'); };
     }
 
     const stored = readJson<PracticeLike[]>(localStorage, STORAGE_KEY, [], isArray);
     if (stored.length) setPractices(stored);
-    autoSelect(stored, assign);
+
+    // Auto-assign in web mode if only 1 account exists, or prune removed accounts
+    if (stored.length > 0) {
+      const validAccountIds = new Set(accs.map((a) => a.id));
+      let changed = false;
+      for (const p of stored) {
+        const key = `${p.source_file ?? ''}::${p.accurx_id}`;
+        const currentAccId = assign[key] || assign[p.accurx_id];
+        if (accs.length === 1 && (!currentAccId || !validAccountIds.has(currentAccId))) {
+          assign[key] = accs[0].id;
+          changed = true;
+        } else if (currentAccId && !validAccountIds.has(currentAccId)) {
+          delete assign[key];
+          changed = true;
+        }
+      }
+      if (changed) {
+        localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(assign));
+      }
+    }
+    setAssignments(assign);
+
+    const savedSelected = readJson<number[]>(sessionStorage, 'selectedPracticeIds', [], isNumberArray);
+    const storedIdSet = new Set(stored.map((p) => p.id));
+    const validSaved = savedSelected.filter((id) => storedIdSet.has(id));
+
+    if (validSaved.length > 0) {
+      setSelectedIds(validSaved);
+    } else {
+      autoSelect(stored, assign);
+    }
     setLoading(false);
   }, [autoSelect, loadFromElectron]);
 
   const handleWebParsed = (parsed: PracticeLike[]) => {
+    const accs = getAccounts();
+    const defaultAccountId = accs.length === 1 ? accs[0].id : (activeAccount || null);
+
+    let updatedMerged: PracticeLike[] = [];
+
     setPractices((prev) => {
       const newFileNames = new Set(parsed.map((p) => p.source_file));
       const kept = prev.filter((p) => !newFileNames.has(p.source_file));
@@ -112,9 +150,9 @@ export default function DataPage() {
       const ids = allocatePracticeIds(unique.length, localStorage);
       const newPractices = unique.map((p, i) => ({ ...p, id: ids[i] }));
 
-      const merged = [...kept, ...newPractices];
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-      return merged;
+      updatedMerged = [...kept, ...newPractices];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedMerged));
+      return updatedMerged;
     });
 
     const byFile = new Map<string, number>();
@@ -123,23 +161,35 @@ export default function DataPage() {
       byFile.set(file, (byFile.get(file) || 0) + 1);
     }
 
+    let updatedFilesList: UploadedFile[] = [];
     setUploadedFiles((prev) => {
       const existing = new Map(prev.map((f) => [f.fileName, f]));
       for (const [fileName, count] of byFile) {
         existing.set(fileName, {
           fileName,
           practiceCount: count,
-          accountId: existing.get(fileName)?.accountId ?? null,
+          accountId: existing.get(fileName)?.accountId ?? defaultAccountId,
         });
       }
-      const updated = [...existing.values()];
-      localStorage.setItem(FILES_KEY, JSON.stringify(updated));
-      return updated;
+      updatedFilesList = [...existing.values()];
+      localStorage.setItem(FILES_KEY, JSON.stringify(updatedFilesList));
+      return updatedFilesList;
     });
+
+    const newAssign = rebuildAssignments(updatedMerged, updatedFilesList);
+    setAssignments(newAssign);
+    localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssign));
+    autoSelect(updatedMerged, newAssign);
 
     setLoading(false);
     setLoadError(null);
-    toast({ tone: 'success', title: `${parsed.length} practices imported`, message: 'Assign each file to an account below.' });
+    toast({
+      tone: 'success',
+      title: `${parsed.length} practices imported`,
+      message: defaultAccountId
+        ? `Assigned to ${accs.find((a) => a.id === defaultAccountId)?.label || 'account'}.`
+        : 'Assign each file to an account below.',
+    });
   };
 
   const applyFiles = (updated: UploadedFile[]) => {
@@ -149,6 +199,7 @@ export default function DataPage() {
       const newAssign = rebuildAssignments(currentPractices, updated);
       setAssignments(newAssign);
       localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(newAssign));
+      autoSelect(currentPractices, newAssign);
       return currentPractices;
     });
   };
@@ -182,13 +233,19 @@ export default function DataPage() {
 
   const getDuplicates = () => findCrossAccountDuplicates(selectedIds, practices, assignments);
 
+  const handleSelectionChange = (ids: number[]) => {
+    setSelectedIds(ids);
+    sessionStorage.setItem('selectedPracticeIds', JSON.stringify(ids));
+  };
+
   const autoResolveDuplicates = () => {
     const dupes = getDuplicates();
     const idsToRemove = new Set<number>();
     for (const { entries } of dupes) {
       for (let i = 1; i < entries.length; i++) idsToRemove.add(entries[i].id);
     }
-    setSelectedIds(selectedIds.filter((id) => !idsToRemove.has(id)));
+    const resolved = selectedIds.filter((id) => !idsToRemove.has(id));
+    handleSelectionChange(resolved);
     setShowDuplicates(false);
   };
 
@@ -425,7 +482,7 @@ export default function DataPage() {
                   : practices
               }
               selectedIds={selectedIds}
-              onSelectionChange={setSelectedIds}
+              onSelectionChange={handleSelectionChange}
               assignments={assignments}
               accounts={accounts}
             />

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Database, FileText, Play, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Users, Database, FileText, Play, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { LogoFull } from '@/components/ui/Logo';
 import { ToastStack } from '@/components/ui/Toast';
 import { LiveAnnouncer } from '@/components/ui/LiveAnnouncer';
@@ -11,6 +11,7 @@ import { LiveAnnouncer } from '@/components/ui/LiveAnnouncer';
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? '0.0.0';
 
 const navItems = [
+  { href: '/accounts', label: 'Accounts', icon: Users },
   { href: '/data', label: 'Data', icon: Database },
   { href: '/templates', label: 'Templates', icon: FileText },
   { href: '/runs', label: 'Runs', icon: Play },
@@ -39,10 +40,7 @@ export function AppShell({ pathname, children }: { pathname: string; children: R
   };
 
   const handleLogout = () => {
-    // Clear session data but keep accounts and credentials
-    localStorage.removeItem('gpflow_practices');
-    localStorage.removeItem('gpflow_assignments');
-    localStorage.removeItem('gpflow_uploaded_files');
+    // Clear session state
     sessionStorage.clear();
     router.push('/');
   };

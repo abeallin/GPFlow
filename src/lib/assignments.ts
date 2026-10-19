@@ -45,7 +45,7 @@ export function practiceKey(p: { source_file?: string | null; accurx_id: string 
 
 /** Look up the account a practice is assigned to (by composite key). */
 export function assignedAccountId(p: PracticeLike, assignments: Assignments): string | undefined {
-  return assignments[practiceKey(p)];
+  return assignments[practiceKey(p)] || assignments[p.accurx_id];
 }
 
 export function rebuildAssignments(practices: PracticeLike[], files: UploadedFileLike[]): Assignments {

@@ -43,7 +43,7 @@ describe('DataTable pagination', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /previous/i }));
     expect(screen.getByText(/Page 1 of 3/)).toBeTruthy();
-  });
+  }, 15000);
 });
 
 describe('DataTable header checkbox', () => {

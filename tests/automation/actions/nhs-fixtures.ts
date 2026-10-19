@@ -22,6 +22,7 @@ export interface NhsSimOptions {
   showKmsi?: boolean;
   federation?: 'microsoft' | 'adfs';
   adfsSkipsHrd?: boolean;
+  adfsHrdSelection?: boolean;
 }
 
 const page = (body: string) => `<!doctype html><html><body>${body}</body></html>`;
@@ -75,6 +76,14 @@ export async function installNhsSimulation(pw: Page, opts: NhsSimOptions): Promi
       });
     </script>`);
 
+  const adfsHrdSelection = () => page(`
+    <div id="bySelection">
+      <div class="idp" role="button" aria-label="NHS CIS2 - Smartcard"><span>NHS CIS2 - Smartcard</span></div>
+      <div class="idp" role="button" aria-label="Active Directory" onclick="location.href=location.pathname + location.search + '&step=login&username=user%40nhs.net'">
+        <span class="largeTextNoWrap">Active Directory</span>
+      </div>
+    </div>`);
+
   await pw.route('**/*', (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -98,7 +107,7 @@ export async function installNhsSimulation(pw: Page, opts: NhsSimOptions): Promi
       }
       const username = url.searchParams.get('username') ?? '';
       const showLogin = url.searchParams.get('step') === 'login' || opts.adfsSkipsHrd;
-      if (!showLogin) return route.fulfill({ contentType: 'text/html', body: adfsHrd() });
+      if (!showLogin) return route.fulfill({ contentType: 'text/html', body: opts.adfsHrdSelection ? adfsHrdSelection() : adfsHrd() });
       const error = url.searchParams.get('err') ? 'Incorrect user ID or password. Type the correct user ID and password, and try again.' : undefined;
       return route.fulfill({ contentType: 'text/html', body: adfsLoginForm(username, error) });
     }

@@ -9,16 +9,8 @@ import { LoadError } from './ui/LoadError';
 import { Skeleton } from './ui/Skeleton';
 import { Alert } from './ui/Alert';
 import { ipc } from '@/lib/ipc-client';
+import type { Run } from '@/lib/types';
 import { useRouter } from 'next/navigation';
-
-interface Run {
-  id: number;
-  started_at: string;
-  type: string;
-  success_count: number;
-  fail_count: number;
-  status: string;
-}
 
 // Status → word + tone. Only failure gets an urgent colour (docs/ui-rules.md §2).
 const STATUS: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'error' }> = {
@@ -59,8 +51,22 @@ export function RunHistory() {
     setActionError(null);
     setRetryingId(runId);
     try {
-      const { practiceIds } = await ipc.retryFailed(runId);
+      const run = runs?.find((r) => r.id === runId);
+      const result = await ipc.retryFailed(runId);
+      const practiceIds = result.practiceIds;
       sessionStorage.setItem('selectedPracticeIds', JSON.stringify(practiceIds));
+      const templateConfig = run?.template_config || result.templateConfig;
+      const type = run?.type || result.type || 'create';
+      if (templateConfig) {
+        sessionStorage.setItem(
+          'gpflow_retry_config',
+          JSON.stringify({
+            ...templateConfig,
+            type,
+          }),
+        );
+      }
+      sessionStorage.setItem('gpflow_auto_start_retry', 'true');
       router.push('/templates');
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to prepare retry');

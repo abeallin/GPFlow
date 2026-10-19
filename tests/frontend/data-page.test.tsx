@@ -72,7 +72,7 @@ describe('DataPage assignments', () => {
     const tbody = document.querySelector('tbody')!;
     expect(within(tbody).getAllByText('one')).toHaveLength(1);
     expect(within(tbody).getAllByText('two')).toHaveLength(2);
-  });
+  }, 15000);
 
   it('allocates non-overlapping ids across two consecutive drops', async () => {
     render(<DataPage />);

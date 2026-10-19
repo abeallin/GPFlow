@@ -1,3 +1,4 @@
+import path from 'path';
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'crypto';
 import { isAllowedNavigation, isTrustedSender, resolveBrowsersPath, contentSecurityPolicy, inlineScriptHashes } from '../../electron/security';
@@ -25,9 +26,11 @@ describe('isTrustedSender', () => {
 
 describe('resolveBrowsersPath', () => {
   it('points Playwright at the bundled browsers when packaged and they exist', () => {
-    const exists = (p: string) => p.replace(/\\/g, '/') === 'C:/App/resources/browsers';
-    expect(resolveBrowsersPath({ isPackaged: true, resourcesPath: 'C:\\App\\resources', exists }))
-      .toBe('C:\\App\\resources\\browsers');
+    const resPath = path.join('App', 'resources');
+    const expected = path.join(resPath, 'browsers');
+    const exists = (p: string) => p === expected;
+    expect(resolveBrowsersPath({ isPackaged: true, resourcesPath: resPath, exists }))
+      .toBe(expected);
   });
   it('returns null in development or when the bundle is missing, so the default cache is used', () => {
     expect(resolveBrowsersPath({ isPackaged: false, resourcesPath: 'C:\\App\\resources', exists: () => true })).toBeNull();

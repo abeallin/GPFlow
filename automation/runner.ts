@@ -12,6 +12,7 @@ import { saveSnapshot, getCurrentSnapshot } from '../database/queries/snapshots'
 import { CancellationToken, CancellationError } from './cancellation-token';
 import { WorkQueue } from './work-queue';
 import path from 'path';
+import fs from 'fs';
 
 const BASE_TEMPLATE_URL = 'https://web.accurx.com/w/{id}/settings/templates?tab=OrganisationTemplates';
 
@@ -23,6 +24,7 @@ export interface RunConfig {
   credentials: { username: string; password: string };
   concurrency?: number;
   accountLabel?: string;
+  authMethod?: 'direct' | 'sso';
 }
 
 /** Where the runner pushes events; in production this is `mainWindow.webContents`. */
@@ -33,7 +35,7 @@ export interface EventSink {
 /** Everything with a side effect is injectable so the runner can be tested without a browser. */
 export interface RunnerDeps {
   launchBrowser: () => Promise<Browser>;
-  login: (page: Page, username: string, password: string) => Promise<LoginResult>;
+  login: (page: Page, username: string, password: string, opts?: { directOnly?: boolean }) => Promise<LoginResult>;
   waitFor2fa: (page: Page) => Promise<boolean>;
   createTemplate: (page: Page, cfg: TemplateConfig) => Promise<CreateTemplateResult>;
   deleteTemplate: (page: Page, name: string) => Promise<DeleteTemplateResult>;
@@ -155,12 +157,18 @@ export class AutomationRunner {
 
     try {
       this.browser = await this.token.race(this.deps.launchBrowser());
-      this.context = await this.token.race(this.browser.newContext());
+      const storagePath = path.join(process.cwd(), 'gpflow-storage-state.json');
+      const storageState = fs.existsSync(storagePath) ? storagePath : undefined;
+      this.context = await this.token.race(
+        this.browser.newContext(storageState ? { storageState } : undefined),
+      );
 
       // Login on a dedicated page — all pages in the context share cookies
       const loginPage = await this.token.race(this.context.newPage());
       const loginResult = await this.token.race(
-        this.deps.login(loginPage, config.credentials.username, config.credentials.password),
+        this.deps.login(loginPage, config.credentials.username, config.credentials.password, {
+          directOnly: config.authMethod === 'direct',
+        }),
       );
 
       if (loginResult.requires2fa) {
@@ -171,6 +179,10 @@ export class AutomationRunner {
         }
       } else if (!loginResult.success) {
         throw new Error(`Login failed: ${loginResult.error ?? 'unknown error'}`);
+      }
+
+      if (this.context && typeof this.context.storageState === 'function') {
+        await this.context.storageState({ path: storagePath }).catch(() => {});
       }
 
       await loginPage.close().catch(() => {});

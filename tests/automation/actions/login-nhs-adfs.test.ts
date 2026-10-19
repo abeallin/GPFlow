@@ -50,4 +50,22 @@ describe('NHSmail SSO via the NHS federation server (ADFS)', () => {
     expect(sim.submits()).toBe(1);
     await page.close();
   }, 60000);
+
+  it('selects Active Directory from Home Realm Discovery selection screen and logs in', async () => {
+    const page = await browser.newPage();
+    const sim = await installNhsSimulation(page, {
+      correctPassword: 'right',
+      mfaDelayMs: 500,
+      federation: 'adfs',
+      adfsHrdSelection: true,
+      showKmsi: true,
+    });
+
+    const result = await loginToAccurx(page, 'user@nhs.net', 'right', { nhsMfaTimeoutMs: 15000 });
+
+    expect(result).toEqual({ success: true, requires2fa: false });
+    expect(page.url()).toContain('web.accurx.com/inbox');
+    expect(sim.submits()).toBe(1);
+    await page.close();
+  }, 60000);
 });

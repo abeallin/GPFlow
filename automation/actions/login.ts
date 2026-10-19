@@ -19,6 +19,7 @@ export interface LoginResult {
 export interface LoginOptions {
   nhsMfaTimeoutMs?: number;
   formLoginTimeoutMs?: number;
+  directOnly?: boolean;
 }
 
 function isNhsEmail(email: string): boolean {
@@ -33,6 +34,12 @@ export async function loginToAccurx(
   opts: LoginOptions = {},
 ): Promise<LoginResult> {
   try {
+    if (page.url().includes(INBOX_URL) || page.url().includes('accurx.com/inbox') || page.url().includes('accurx.com/w/')) {
+      return { success: true, requires2fa: false };
+    }
+    if (opts.directOnly) {
+      return await loginViaForm(page, username, password, opts.formLoginTimeoutMs ?? DEFAULT_FORM_LOGIN_TIMEOUT_MS);
+    }
     if (isNhsEmail(username)) {
       return await loginViaNhsMail(page, username, password, opts.nhsMfaTimeoutMs ?? DEFAULT_NHS_MFA_TIMEOUT_MS);
     }
@@ -46,11 +53,11 @@ export async function loginToAccurx(
   }
 }
 
-/** Direct email/password form — for non-NHS.net accounts */
+/** Direct email/password form — for non-NHS.net accounts or direct Accurx logins */
 async function loginViaForm(page: Page, username: string, password: string, timeoutMs: number): Promise<LoginResult> {
   await page.goto(LOGIN_FORM_URL, { waitUntil: 'domcontentloaded' });
 
-  if (page.url().includes(INBOX_URL)) {
+  if (page.url().includes(INBOX_URL) || page.url().includes('accurx.com/inbox') || page.url().includes('accurx.com/w/')) {
     return { success: true, requires2fa: false };
   }
 
@@ -65,14 +72,35 @@ async function loginViaForm(page: Page, username: string, password: string, time
     .or(page.locator('button[type="submit"]'));
   await submitButton.first().click();
 
-  return await waitForLoginResult(page, timeoutMs, 'Accurx did not reach the inbox or 2FA page');
+  const outcome = await Promise.race([
+    page.waitForURL((u) => {
+      const href = u.toString();
+      return href.includes(INBOX_URL) || href.includes(TWO_FACTOR_URL) || href.includes('accurx.com/inbox') || href.includes('accurx.com/w/');
+    }, { timeout: timeoutMs }).then(() => 'success' as const),
+    page.locator('[role="alert"]').filter({ hasText: /\S/ }).first()
+      .waitFor({ state: 'visible', timeout: Math.min(timeoutMs, 6000) })
+      .then(() => 'error' as const),
+  ]).catch(() => 'timeout' as const);
+
+  if (outcome === 'error') {
+    const text = (await page.locator('[role="alert"]').first().innerText().catch(() => '')).trim();
+    return { success: false, requires2fa: false, error: text || 'Invalid email or password' };
+  }
+  if (outcome === 'timeout') {
+    return { success: false, requires2fa: false, error: `Accurx direct login did not reach inbox or 2FA within ${Math.round(timeoutMs / 1000)}s` };
+  }
+
+  if (page.url().includes(TWO_FACTOR_URL)) {
+    return { success: false, requires2fa: true };
+  }
+  return { success: true, requires2fa: false };
 }
 
 /** NHSmail SSO flow — for @nhs.net / @nhs.uk accounts */
 async function loginViaNhsMail(page: Page, username: string, password: string, mfaTimeoutMs: number): Promise<LoginResult> {
   await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
 
-  if (page.url().includes(INBOX_URL)) {
+  if (page.url().includes(INBOX_URL) || page.url().includes('accurx.com/inbox') || page.url().includes('accurx.com/w/')) {
     return { success: true, requires2fa: false };
   }
 
@@ -91,14 +119,20 @@ async function loginViaNhsMail(page: Page, username: string, password: string, m
   // to the NHS server (fs.nhs.net, ADFS). Wait for whichever form appears.
   const landed = await waitForAny(page, {
     microsoft: '#i0118',
+    adfsLogin: '#passwordInput, input[type="password"]',
+    adfsSelection: '[aria-label="Active Directory"], .idp:has-text("Active Directory"), .idp',
     adfsHrd: '#emailInput',
-    adfsLogin: '#passwordInput',
-  }, 20000);
+  }, 25000);
 
   let failure: string | null = null;
   if (landed === 'microsoft') {
     failure = await submitMicrosoftPassword(page, password);
-  } else if (landed === 'adfsHrd' || landed === 'adfsLogin') {
+  } else if (
+    landed === 'adfsLogin' ||
+    landed === 'adfsSelection' ||
+    landed === 'adfsHrd' ||
+    page.url().includes('fs.nhs.net')
+  ) {
     failure = await submitAdfsLogin(page, username, password, landed === 'adfsHrd');
   } else {
     return { success: false, requires2fa: false, error: 'Neither the Microsoft nor the NHS sign-in form appeared after entering the email' };
@@ -126,10 +160,22 @@ async function loginViaNhsMail(page: Page, username: string, password: string, m
 async function waitForAny<K extends string>(page: Page, selectors: Record<K, string>, timeoutMs: number): Promise<K | null> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    if (page.url().includes('fs.nhs.net')) {
+      for (const k of ['adfsLogin', 'adfsSelection', 'adfsHrd'] as K[]) {
+        if (k in selectors && (await page.locator(selectors[k]).first().isVisible().catch(() => false))) {
+          return k;
+        }
+      }
+    }
     for (const key of Object.keys(selectors) as K[]) {
       if (await page.locator(selectors[key]).first().isVisible().catch(() => false)) return key;
     }
     await page.waitForTimeout(100);
+  }
+  if (page.url().includes('fs.nhs.net')) {
+    for (const k of ['adfsLogin', 'adfsSelection', 'adfsHrd'] as K[]) {
+      if (k in selectors) return k;
+    }
   }
   return null;
 }
@@ -158,25 +204,61 @@ async function submitMicrosoftPassword(page: Page, password: string): Promise<st
 }
 
 /**
- * The NHS federation server (fs.nhs.net/adfs/ls), captured 2026-09-23: a Home Realm
- * Discovery step (#emailInput + Next) and then a login form (#userNameInput,
- * #passwordInput, <span id="submitButton" role="button">). Errors render into
- * <span id="errorText" role="alert">. Returns an error message, or null when we moved on.
+ * The NHS federation server (fs.nhs.net/adfs/ls):
+ * May present:
+ *  1. An account selection (HRD) screen: "Active Directory" vs "NHS CIS2 - Smartcard"
+ *  2. An organizational realm discovery email input (#emailInput + Next)
+ *  3. The username/password login form (#userNameInput, #passwordInput, #submitButton)
+ * Errors render into <span id="errorText" role="alert">. Returns an error message, or null when we moved on.
  */
-async function submitAdfsLogin(page: Page, username: string, password: string, atHrd: boolean): Promise<string | null> {
-  if (atHrd) {
-    await page.locator('#emailInput').fill(username);
-    await page.locator('input[name="HomeRealmByEmail"]').or(page.getByRole('button', { name: /^next$/i })).first().click();
-    await page.locator('#passwordInput').waitFor({ state: 'visible', timeout: 20000 });
+async function submitAdfsLogin(page: Page, username: string, password: string, atHrd?: boolean): Promise<string | null> {
+  const passwordInput = page.locator('#passwordInput, input[type="password"]');
+  const hasPasswordAlready = await passwordInput.first().isVisible().catch(() => false);
+
+  if (atHrd || !hasPasswordAlready) {
+    const adButton = page
+      .locator('[aria-label="Active Directory"], .idp:has-text("Active Directory")')
+      .or(page.getByText('Active Directory', { exact: false }));
+    const emailInput = page.locator('#emailInput');
+
+    if (await adButton.first().isVisible().catch(() => false)) {
+      await adButton.first().click();
+      await passwordInput.first().waitFor({ state: 'visible', timeout: 20000 });
+    } else if (await emailInput.first().isVisible().catch(() => false)) {
+      await emailInput.first().fill(username);
+      await page.locator('input[name="HomeRealmByEmail"]').or(page.getByRole('button', { name: /^next$/i })).first().click();
+      await passwordInput.first().waitFor({ state: 'visible', timeout: 20000 });
+    } else {
+      const choice = await waitForAny(page, {
+        login: '#passwordInput, input[type="password"]',
+        activeDirectory: '[aria-label="Active Directory"], .idp:has-text("Active Directory")',
+        email: '#emailInput',
+      }, 15000);
+
+      if (choice === 'activeDirectory') {
+        await adButton.first().click();
+        await passwordInput.first().waitFor({ state: 'visible', timeout: 20000 });
+      } else if (choice === 'email') {
+        await emailInput.first().fill(username);
+        await page.locator('input[name="HomeRealmByEmail"]').or(page.getByRole('button', { name: /^next$/i })).first().click();
+        await passwordInput.first().waitFor({ state: 'visible', timeout: 20000 });
+      }
+    }
   }
 
-  const userField = page.locator('#userNameInput');
-  if (await userField.count() > 0 && !(await userField.inputValue().catch(() => ''))) {
-    await userField.fill(username);
-  }
-  await page.locator('#passwordInput').fill(password);
+  await passwordInput.first().waitFor({ state: 'visible', timeout: 20000 });
 
-  await page.locator('#submitButton').or(page.getByRole('button', { name: /sign in/i })).first().click();
+  const userField = page.locator('#userNameInput, input[name="UserName"]');
+  if ((await userField.count()) > 0 && !(await userField.first().inputValue().catch(() => ''))) {
+    await userField.first().fill(username);
+  }
+  await passwordInput.first().fill(password);
+
+  const submitBtn = page
+    .locator('#submitButton')
+    .or(page.getByRole('button', { name: /sign in/i }))
+    .or(page.locator('button[type="submit"], input[type="submit"]'));
+  await submitBtn.first().click();
 
   const errorText = page.locator('#errorText').filter({ hasText: /\S/ });
   const outcome = await Promise.race([

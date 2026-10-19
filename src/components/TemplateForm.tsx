@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Input } from './ui/Input';
 import { Textarea } from './ui/Textarea';
 import { Button } from './ui/Button';
 import { Toggle } from './ui/Toggle';
 
-interface TemplateConfig {
+export interface TemplateConfig {
   template_name: string;
   message: string;
   individual: boolean;
@@ -20,14 +20,23 @@ interface TemplateFormProps {
   practiceCount: number;
   /** A run is being started: the submit shows its pending state and refuses a second press. */
   busy?: boolean;
+  initialConfig?: Partial<TemplateConfig>;
 }
 
-export function TemplateForm({ mode, onSubmit, practiceCount, busy = false }: TemplateFormProps) {
-  const [templateName, setTemplateName] = useState('');
-  const [message, setMessage] = useState('');
-  const [individual, setIndividual] = useState(true);
-  const [batch, setBatch] = useState(false);
-  const [allowRespond, setAllowRespond] = useState(false);
+export function TemplateForm({ mode, onSubmit, practiceCount, busy = false, initialConfig }: TemplateFormProps) {
+  const [templateName, setTemplateName] = useState(initialConfig?.template_name ?? '');
+  const [message, setMessage] = useState(initialConfig?.message ?? '');
+  const [individual, setIndividual] = useState(initialConfig?.individual ?? true);
+  const [batch, setBatch] = useState(initialConfig?.batch ?? false);
+  const [allowRespond, setAllowRespond] = useState(initialConfig?.allow_respond ?? false);
+
+  useEffect(() => {
+    if (initialConfig?.template_name !== undefined) setTemplateName(initialConfig.template_name);
+    if (initialConfig?.message !== undefined) setMessage(initialConfig.message);
+    if (initialConfig?.individual !== undefined) setIndividual(initialConfig.individual);
+    if (initialConfig?.batch !== undefined) setBatch(initialConfig.batch);
+    if (initialConfig?.allow_respond !== undefined) setAllowRespond(initialConfig.allow_respond);
+  }, [initialConfig]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +89,7 @@ export function TemplateForm({ mode, onSubmit, practiceCount, busy = false }: Te
         size="lg"
         pending={busy}
         pendingLabel="Starting…"
-        disabledReason={nothingSelected ? 'No assigned practices selected. Assign files to accounts on the Data page first.' : undefined}
+        disabledReason={nothingSelected ? 'No assigned practices selected. Assign practices to an account to continue.' : undefined}
         className="w-full"
       >
         {mode === 'create' ? 'Bulk Create Template' : 'Bulk Delete Template'}

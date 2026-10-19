@@ -36,3 +36,9 @@ Thumbs.db
 
 # Bundled Playwright browsers for packaging (pnpm bundle:browsers)
 playwright-browsers/
+
+# Local databases and browser sessions
+gpflow.db
+gpflow.db*
+gpflow-browser-profile/
+gpflow-storage-state.json

@@ -1,10 +1,11 @@
-import { ipc } from './ipc-client';
+import { ipc, type ElectronAPI } from './ipc-client';
 import { readJson } from './storage';
 
 export interface Account {
   id: string;
   label: string;
   username: string;
+  authMethod?: 'direct' | 'sso';
 }
 
 const ACCOUNTS_KEY = 'gpflow_accounts';
@@ -27,24 +28,41 @@ export function getAccounts(): Account[] {
   return readJson<Account[]>(localStorage, ACCOUNTS_KEY, [], isAccountArray);
 }
 
+const isNativeIpc = (client: unknown): client is ElectronAPI =>
+  Boolean(client && typeof client === 'object' && !('isWeb' in client));
+
 function readWebPasswords(): Record<string, string> {
   if (typeof window === 'undefined') return {};
-  return readJson<Record<string, string>>(
+  let map = readJson<Record<string, string>>(
     sessionStorage,
     PASSWORDS_KEY,
     {},
     (v) => typeof v === 'object' && v !== null && !Array.isArray(v),
   );
+  if (Object.keys(map).length === 0) {
+    map = readJson<Record<string, string>>(
+      localStorage,
+      PASSWORDS_KEY,
+      {},
+      (v) => typeof v === 'object' && v !== null && !Array.isArray(v),
+    );
+    if (Object.keys(map).length > 0) {
+      sessionStorage.setItem(PASSWORDS_KEY, JSON.stringify(map));
+    }
+  }
+  return map;
 }
 
 function writeWebPasswords(passwords: Record<string, string>): void {
   if (typeof window === 'undefined') return;
-  sessionStorage.setItem(PASSWORDS_KEY, JSON.stringify(passwords));
+  const json = JSON.stringify(passwords);
+  sessionStorage.setItem(PASSWORDS_KEY, json);
+  localStorage.setItem(PASSWORDS_KEY, json);
 }
 
-/** Get password — Electron encrypted storage, or sessionStorage on the web */
+/** Get password — Electron encrypted storage, or sessionStorage/localStorage on the web */
 export async function getPasswordAsync(accountId: string): Promise<string | null> {
-  if (ipc) {
+  if (isNativeIpc(ipc)) {
     try {
       const creds = await ipc.getCredentials(accountId);
       return creds?.password || null;
@@ -55,17 +73,17 @@ export async function getPasswordAsync(accountId: string): Promise<string | null
   return getPasswordSync(accountId);
 }
 
-/** Synchronous password getter (web-only, from sessionStorage) */
+/** Synchronous password getter (web-only) */
 export function getPasswordSync(accountId: string): string | null {
   return readWebPasswords()[accountId] || null;
 }
 
 /**
  * Store password. In Electron the plaintext ONLY goes through the encrypted
- * IPC store and any failure is rethrown; sessionStorage is web-only.
+ * IPC store and any failure is rethrown; web mode uses sessionStorage and localStorage.
  */
 export async function savePassword(accountId: string, username: string, password: string): Promise<void> {
-  if (ipc) {
+  if (isNativeIpc(ipc)) {
     await ipc.saveCredentials({ accountId, username, password, licenseKey: '' });
     return;
   }
@@ -87,12 +105,17 @@ export function makeLabel(username: string, existing: Account[]): string {
   return `${withDomain} (${n})`;
 }
 
-export async function addAccount(username: string, password: string): Promise<Account> {
+export async function addAccount(
+  username: string,
+  password: string,
+  authMethod: 'direct' | 'sso' = 'direct',
+): Promise<Account> {
   const accounts = getAccounts();
   const account: Account = {
     id: generateId(),
     label: makeLabel(username, accounts),
     username,
+    authMethod,
   };
   accounts.push(account);
   localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
@@ -112,9 +135,38 @@ export async function removeAccount(id: string): Promise<void> {
     writeWebPasswords(passwords);
   }
 
-  if (ipc) {
+  if (isNativeIpc(ipc)) {
     await ipc.deleteCredentials(id);
   }
+}
+
+/** Update an existing account's details and/or password without reassigning practices. */
+export async function updateAccount(
+  id: string,
+  updates: { label?: string; username?: string; password?: string; authMethod?: 'direct' | 'sso' },
+): Promise<Account> {
+  const accounts = getAccounts();
+  const index = accounts.findIndex((a) => a.id === id);
+  if (index === -1) {
+    throw new Error('Account not found');
+  }
+
+  const existing = accounts[index];
+  const updated: Account = {
+    ...existing,
+    label: updates.label !== undefined && updates.label.trim() ? updates.label.trim() : existing.label,
+    username: updates.username !== undefined && updates.username.trim() ? updates.username.trim() : existing.username,
+    authMethod: updates.authMethod !== undefined ? updates.authMethod : (existing.authMethod || 'direct'),
+  };
+
+  accounts[index] = updated;
+  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+
+  if (updates.password !== undefined && updates.password.trim()) {
+    await savePassword(id, updated.username, updates.password.trim());
+  }
+
+  return updated;
 }
 
 export function getAccountById(id: string): Account | undefined {
@@ -124,6 +176,7 @@ export function getAccountById(id: string): Account | undefined {
 export function clearAllAccounts(): void {
   localStorage.removeItem(ACCOUNTS_KEY);
   sessionStorage.removeItem(PASSWORDS_KEY);
+  localStorage.removeItem(PASSWORDS_KEY);
 }
 
 /** Check if all accounts have passwords available */
